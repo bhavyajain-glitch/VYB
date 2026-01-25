@@ -1,7 +1,7 @@
 import { Platform, Alert } from 'react-native';
 
 // ======= TOGGLE THIS FOR LOCAL TESTING =======
-export const USE_LOCAL_API = false; // Set to true for local testing, false for production
+export const USE_LOCAL_API = true; // Set to true for local testing, false for production
 // ==============================================
 
 // API URLs

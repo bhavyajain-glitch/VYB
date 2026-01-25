@@ -5,7 +5,7 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": false,
+    "newArchEnabled": true,
     "splash": {
       "backgroundColor": "#8B5CF6",
       "resizeMode": "contain"
@@ -15,7 +15,11 @@
       "bundleIdentifier": "com.campusconnect.app"
     },
     "android": {
-      "package": "com.campusconnect.app"
+      "package": "com.campusconnect.app",
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "web": {
       "bundler": "metro",
@@ -34,11 +38,18 @@
         {
           "photosPermission": "Allow CampusConnect to access your photos for profile and posts."
         }
-      ]
+      ],
+      "expo-font"
     ],
     "scheme": "campusconnect",
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "26f32825-e835-4da0-9347-e0b67cf71cb0"
+      }
     }
   }
 }
