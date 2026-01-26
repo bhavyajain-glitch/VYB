@@ -4,24 +4,16 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useState, useEffect } from 'react';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { useRouter } from 'expo-router';
+import { authAPI } from '../services/api';
+import { USE_LOCAL_API } from '../services/api';
+import { RefreshControl } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getAvatarSource, getPostImageUrl } from '../../utils/imageUtils';
 
 const LIME = '#D4FF00';
 const { width } = Dimensions.get('window');
 const isWeb = Platform.OS === 'web';
 const MAX_WIDTH = 600;
-
-const userPosts = [
-  { id: '1', image: 'https://images.unsplash.com/photo-1517694712202-14dd9538aa97?w=400', likes: 234 },
-  { id: '2', image: 'https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=400', likes: 156 },
-  { id: '3', image: 'https://images.unsplash.com/photo-1515378960530-7c0da6231fb1?w=400', likes: 89 },
-  { id: '4', image: 'https://images.unsplash.com/photo-1498050108023-c5249f4df085?w=400', likes: 312 },
-  { id: '5', image: 'https://images.unsplash.com/photo-1504639725590-34d0984388bd?w=400', likes: 178 },
-  { id: '6', image: 'https://images.unsplash.com/photo-1461749280684-dccba630e2f6?w=400', likes: 245 },
-];
-
-import { authAPI } from '../services/api';
-import { USE_LOCAL_API } from '../services/api';
-import { RefreshControl } from 'react-native';
 
 interface UserData {
   username?: string;
@@ -34,13 +26,10 @@ interface UserData {
   followingCount?: number;
 }
 
-import AsyncStorage from '@react-native-async-storage/async-storage';
-
-// ... imports
 
 export default function ProfileScreen() {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<'posts' | 'saved'>('posts');
+  const [activeTab, setActiveTab] = useState<'posts'>('posts');
   const [user, setUser] = useState<UserData | null>(null);
   const [userPosts, setUserPosts] = useState<any[]>([]);
   const [refreshing, setRefreshing] = useState(false);
@@ -85,26 +74,30 @@ export default function ProfileScreen() {
   };
 
   const handleLogout = async () => {
-    Alert.alert(
-      "Log Out",
-      "Are you sure you want to log out?",
-      [
-        { text: "Cancel", style: "cancel" },
-        { 
-          text: "Log Out", 
-          style: "destructive",
-          onPress: async () => {
-            try {
-              await require('@react-native-async-storage/async-storage').default.removeItem('userToken');
-              await require('@react-native-async-storage/async-storage').default.removeItem('userInfo');
-              router.replace('/auth');
-            } catch (error) {
-              console.error('Error logging out:', error);
-            }
-          }
-        }
-      ]
-    );
+    const doLogout = async () => {
+      try {
+        await AsyncStorage.removeItem('userToken');
+        await AsyncStorage.removeItem('userInfo');
+        router.replace('/auth');
+      } catch (error) {
+        console.error('Error logging out:', error);
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      if (window.confirm('Are you sure you want to log out?')) {
+        doLogout();
+      }
+    } else {
+      Alert.alert(
+        "Log Out",
+        "Are you sure you want to log out?",
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "Log Out", style: "destructive", onPress: doLogout }
+        ]
+      );
+    }
   };
 
   return (
@@ -131,7 +124,7 @@ export default function ProfileScreen() {
             {/* Avatar & Edit */}
             <View style={styles.avatarRow}>
               <View style={styles.avatarBorder}>
-                <Image source={{ uri: user?.profileImage || 'https://i.pravatar.cc/150?img=32' }} style={styles.avatar} />
+                <Image source={getAvatarSource(user?.profileImage)} style={styles.avatar} />
               </View>
               <TouchableOpacity style={styles.editButton} onPress={() => router.push('/profile-setup')}>
                 <Edit3 size={14} color="black" />
@@ -159,11 +152,8 @@ export default function ProfileScreen() {
 
             {/* Tabs */}
             <View style={styles.tabsRow}>
-              <TouchableOpacity onPress={() => setActiveTab('posts')} style={[styles.tabButton, activeTab === 'posts' && styles.tabActive]}>
-                <Grid size={20} color={activeTab === 'posts' ? 'black' : '#9CA3AF'} />
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => setActiveTab('saved')} style={[styles.tabButton, activeTab === 'saved' && styles.tabActive]}>
-                <Bookmark size={20} color={activeTab === 'saved' ? 'black' : '#9CA3AF'} />
+              <TouchableOpacity onPress={() => setActiveTab('posts')} style={[styles.tabButton, styles.tabActive]}>
+                <Grid size={20} color="black" />
               </TouchableOpacity>
             </View>
 
@@ -177,7 +167,7 @@ export default function ProfileScreen() {
                 userPosts.map((post, index) => (
                   <Animated.View key={post._id} entering={FadeIn.delay(index * 100)} style={styles.postItem}>
                     <TouchableOpacity>
-                      <Image source={{ uri: post.image }} style={styles.postImage} />
+                      <Image source={{ uri: getPostImageUrl(post.image) }} style={styles.postImage} />
                       {/* <View style={styles.postLikes}><Heart size={12} color="white" fill="white" /><Text style={styles.postLikesText}>{post.likes.length}</Text></View> */}
                     </TouchableOpacity>
                   </Animated.View>

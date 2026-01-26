@@ -2,7 +2,7 @@
   "expo": {
     "name": "CampusConnect",
     "slug": "campusconnect",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
@@ -16,6 +16,7 @@
     },
     "android": {
       "package": "com.campusconnect.app",
+      "versionCode": 2,
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.RECORD_AUDIO"
@@ -23,7 +24,12 @@
     },
     "web": {
       "bundler": "metro",
-      "output": "single"
+      "output": "single",
+      "name": "Vybe",
+      "shortName": "Vybe",
+      "description": "Campus social network for students",
+      "themeColor": "#D4FF00",
+      "backgroundColor": "#ffffff"
     },
     "plugins": [
       "expo-router",

@@ -1,7 +1,7 @@
 import { Platform, Alert } from 'react-native';
 
 // ======= TOGGLE THIS FOR LOCAL TESTING =======
-export const USE_LOCAL_API = true; // Set to true for local testing, false for production
+export const USE_LOCAL_API = false; // Set to true for local testing, false for production
 // ==============================================
 
 // API URLs
@@ -88,9 +88,12 @@ export const authAPI = {
   getRecommendations: () => request('/dating/recommendations', 'GET'),
   switchMatch: (userId: string) => request(`/dating/match/${userId}`, 'POST'),
   buyCoins: (amount: number) => request('/dating/buy-coins', 'POST', { amount }),
+  acceptDatingTerms: () => request('/dating/accept-terms', 'POST'),
+  updateDatingProfile: (data: any) => request('/dating/profile', 'PATCH', data),
+  getDatingProfile: () => request('/dating/profile', 'GET'),
 
   // Posts
-  getPosts: () => request('/posts', 'GET'),
+  getPosts: (page: number = 1, limit: number = 10) => request(`/posts?page=${page}&limit=${limit}`, 'GET'),
   createPost: (data: any) => request('/posts', 'POST', data),
   getUserPosts: (userId: string) => request(`/posts/user/${userId}`, 'GET'),
   addComment: (postId: string, text: string) => request(`/posts/${postId}/comment`, 'POST', { text }),
@@ -102,10 +105,21 @@ export const authAPI = {
   searchUsers: (query: string) => request(`/users/search?q=${query}`, 'GET'),
   getUser: (id: string) => request(`/users/${id}`, 'GET'),
   followUser: (id: string) => request(`/users/${id}/follow`, 'POST'),
+  blockUser: (id: string) => request(`/users/${id}/block`, 'POST'),
 
   // Chat
   sendMessage: (receiverId: string, text: string) => request('/chat/send', 'POST', { receiverId, text }),
   getMessages: (userId: string) => request(`/chat/${userId}`, 'GET'),
+
+  // Upload (Cloudinary)
+  uploadImage: (image: string, folder: string = 'campusconnect') => request('/upload', 'POST', { image, folder }),
+
+  // Stories
+  getStories: () => request('/stories', 'GET'),
+  createStory: (image: string) => request('/stories', 'POST', { image }),
+  viewStory: (id: string) => request(`/stories/${id}/view`, 'POST'),
+  archiveStory: (id: string) => request(`/stories/${id}`, 'DELETE'),
+  getArchivedStories: () => request('/stories/archive', 'GET'),
 };
 
 export default { request };

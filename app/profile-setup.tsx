@@ -5,6 +5,7 @@ import { useState, useEffect } from 'react';
 import { Camera, ChevronRight, GraduationCap, BookOpen, AtSign, Check, X, User } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { authAPI } from './services/api';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const LIME = '#D4FF00';
 const { width } = Dimensions.get('window');
@@ -24,13 +25,54 @@ export default function ProfileSetupScreen() {
   const [major, setMajor] = useState('');
   const [selectedInterests, setSelectedInterests] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const [checkingUsername, setCheckingUsername] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [originalUsername, setOriginalUsername] = useState('');
+
+  // Load existing profile data on mount
+  useEffect(() => {
+    loadExistingProfile();
+  }, []);
+
+  const loadExistingProfile = async () => {
+    try {
+      const cached = await AsyncStorage.getItem('userInfo');
+      if (cached) {
+        const user = JSON.parse(cached);
+        if (user.username) {
+          setIsEditing(true);
+          setOriginalUsername(user.username);
+          setUsername(user.username || '');
+          setFullName(user.fullName || '');
+          setBio(user.bio || '');
+          setCollege(user.college || '');
+          setYear(user.year || '');
+          setMajor(user.major || '');
+          // Skip blob URLs as they expire on page refresh
+          const profileImg = user.profileImage;
+          if (profileImg && !profileImg.startsWith('blob:')) {
+            setAvatar(profileImg);
+          }
+          setSelectedInterests(user.interests || []);
+          setUsernameAvailable(true); // Current username is valid
+        }
+      }
+    } catch (e) {
+      console.error('Failed to load existing profile');
+    }
+  };
 
   // Debounced Username Check
   useEffect(() => {
     const check = async () => {
       if (username.length < 3) {
         setUsernameAvailable(null);
+        return;
+      }
+      // Skip check if username hasn't changed from original (editing mode)
+      if (isEditing && username === originalUsername) {
+        setUsernameAvailable(true);
         return;
       }
       setCheckingUsername(true);
@@ -46,11 +88,49 @@ export default function ProfileSetupScreen() {
     
     const timer = setTimeout(check, 500);
     return () => clearTimeout(timer);
-  }, [username]);
+  }, [username, isEditing, originalUsername]);
+
+  // Convert image to base64 for upload
+  const processImage = async (uri: string): Promise<string> => {
+    if (Platform.OS === 'web') {
+      // Web: Create canvas and convert to base64
+      return new Promise((resolve, reject) => {
+        const img = new (window as any).Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          const MAX_SIZE = 800;
+          const scale = Math.min(MAX_SIZE / img.width, MAX_SIZE / img.height, 1);
+          canvas.width = img.width * scale;
+          canvas.height = img.height * scale;
+          const ctx = canvas.getContext('2d');
+          ctx?.drawImage(img, 0, 0, canvas.width, canvas.height);
+          resolve(canvas.toDataURL('image/jpeg', 0.7));
+        };
+        img.onerror = reject;
+        img.src = uri;
+      });
+    }
+    // Native: Use base64 from ImagePicker
+    return uri;
+  };
 
   const pickImage = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, allowsEditing: true, aspect: [1, 1], quality: 0.8 });
-    if (!result.canceled) setAvatar(result.assets[0].uri);
+    const result = await ImagePicker.launchImageLibraryAsync({ 
+      mediaTypes: ImagePicker.MediaTypeOptions.Images, 
+      allowsEditing: true, 
+      aspect: [1, 1], 
+      quality: 0.7,
+      base64: true 
+    });
+    if (!result.canceled) {
+      if (result.assets[0].base64) {
+        setAvatar(`data:image/jpeg;base64,${result.assets[0].base64}`);
+      } else {
+        const processed = await processImage(result.assets[0].uri);
+        setAvatar(processed);
+      }
+    }
   };
 
   const takePhoto = async () => {
@@ -58,9 +138,17 @@ export default function ProfileSetupScreen() {
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
       aspect: [1, 1],
-      quality: 0.8,
+      quality: 0.7,
+      base64: true
     });
-    if (!result.canceled) setAvatar(result.assets[0].uri);
+    if (!result.canceled) {
+      if (result.assets[0].base64) {
+        setAvatar(`data:image/jpeg;base64,${result.assets[0].base64}`);
+      } else {
+        const processed = await processImage(result.assets[0].uri);
+        setAvatar(processed);
+      }
+    }
   };
 
   const requestAvatarSource = () => {
@@ -95,6 +183,25 @@ export default function ProfileSetupScreen() {
   const handleComplete = async () => {
     setIsLoading(true);
     try {
+      let profileImageUrl = avatar || '';
+
+      // Upload to Cloudinary if it's a new image (base64)
+      if (avatar && avatar.startsWith('data:image')) {
+        setIsUploading(true);
+        try {
+          const uploadRes = await authAPI.uploadImage(avatar, 'profiles');
+          profileImageUrl = uploadRes.data.url;
+          console.log('✅ Image uploaded to Cloudinary:', profileImageUrl);
+        } catch (uploadError) {
+          console.error('Upload failed:', uploadError);
+          Alert.alert('Upload Error', 'Failed to upload profile image. Please try again.');
+          setIsUploading(false);
+          setIsLoading(false);
+          return;
+        }
+        setIsUploading(false);
+      }
+
       const profileData = {
         username,
         fullName,
@@ -103,7 +210,7 @@ export default function ProfileSetupScreen() {
         year,
         major,
         interests: selectedInterests,
-        profileImage: avatar || '', 
+        profileImage: profileImageUrl,
       };
 
       await authAPI.updateProfile(profileData);

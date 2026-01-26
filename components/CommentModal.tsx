@@ -2,6 +2,7 @@ import { View, Text, Image, TouchableOpacity, ScrollView, TextInput, StyleSheet,
 import { useState, useEffect } from 'react';
 import { X, Send, Heart, MessageCircle } from 'lucide-react-native';
 import { authAPI } from '../app/services/api';
+import { getAvatarUrl, getPostImageUrl } from '../utils/imageUtils';
 
 const LIME = '#D4FF00';
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -80,7 +81,7 @@ export default function CommentModal({ visible, onClose, postId }: CommentModalP
                              {/* Minimal Post Summary */}
                              {post && (
                                 <View style={styles.postSummary}>
-                                    <Image source={{ uri: post.image }} style={styles.tinyImage} />
+                                    <Image source={{ uri: getPostImageUrl(post.image) }} style={styles.tinyImage} />
                                     <View style={{ flex: 1 }}>
                                         <Text style={styles.summaryText} numberOfLines={2}>
                                             <Text style={styles.bold}>{post.user?.username}</Text> {post.caption}
@@ -96,7 +97,7 @@ export default function CommentModal({ visible, onClose, postId }: CommentModalP
                                 ) : (
                                     comments.map((c, i) => (
                                         <View key={i} style={styles.commentItem}>
-                                            <Image source={{ uri: c.user?.profileImage || 'https://i.pravatar.cc/150' }} style={styles.commentAvatar} />
+                                            <Image source={{ uri: getAvatarUrl(c.user?.profileImage) }} style={styles.commentAvatar} />
                                             <View style={styles.commentBubble}>
                                                 <Text style={styles.commentUsername}>{c.user?.username || 'User'}</Text>
                                                 <Text style={styles.commentText}>{c.text}</Text>

@@ -1,3 +1,62 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Mobile Web Optimizations */
+
+/* Prevent iOS Safari from zooming on input focus */
+input, select, textarea {
+  font-size: 16px !important;
+}
+
+/* Smooth momentum scrolling for iOS */
+.scroll-container {
+  -webkit-overflow-scrolling: touch;
+  scroll-behavior: smooth;
+}
+
+/* Fix iOS 100vh issue */
+.full-height {
+  height: 100vh;
+  height: -webkit-fill-available;
+}
+
+/* Disable double-tap zoom on interactive elements */
+button, a, [role="button"], .touchable {
+  touch-action: manipulation;
+}
+
+/* Prevent content from being selected on long press */
+.no-select {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+/* Safe area aware bottom padding (for tab bar) */
+.safe-bottom {
+  padding-bottom: calc(env(safe-area-inset-bottom) + 60px);
+}
+
+/* Safe area aware top padding (for header) */
+.safe-top {
+  padding-top: env(safe-area-inset-top);
+}
+
+/* Prevent overscroll/bounce effect on body */
+html {
+  overscroll-behavior: none;
+}
+
+/* Mobile-friendly scrollbar (hidden but functional) */
+* {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+/* Better font rendering on mobile */
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}

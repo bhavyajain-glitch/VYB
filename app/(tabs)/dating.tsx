@@ -1,10 +1,13 @@
-import { View, Text, Image, TouchableOpacity, ScrollView, TextInput, StyleSheet, Dimensions, Platform, Alert, RefreshControl } from 'react-native';
+import { View, Text, Image, TouchableOpacity, ScrollView, TextInput, StyleSheet, Dimensions, Platform, Alert, RefreshControl, ActivityIndicator } from 'react-native';
 import { Heart, Sparkles, Coins, User, X, Calendar, MessageCircle, Send } from 'lucide-react-native';
 import { useState, useEffect } from 'react';
 import Animated, { FadeIn, SlideInUp } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
 import { authAPI } from '../services/api'; 
 import { useRouter } from 'expo-router';
+import { getAvatarSource } from '../../utils/imageUtils';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import DatingTermsModal from '../../components/DatingTermsModal';
 
 const LIME = '#D4FF00';
 const { width } = Dimensions.get('window');
@@ -33,12 +36,63 @@ export default function DatingScreen() {
   const [selectedProfile, setSelectedProfile] = useState<Match | null>(null);
   const [showShop, setShowShop] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  
+  // Dating Setup State
+  const [isLoading, setIsLoading] = useState(true);
+  const [showTermsModal, setShowTermsModal] = useState(false);
+  const [datingProfileComplete, setDatingProfileComplete] = useState(false);
 
-  // Fetch Data on Load
+  // Check dating profile status on load
   useEffect(() => {
-    fetchUserData();
-    fetchRecommendations();
+    checkDatingStatus();
   }, []);
+
+  const checkDatingStatus = async () => {
+    setIsLoading(true);
+    try {
+      const res = await authAPI.getDatingProfile();
+      if (res.data) {
+        const { datingTermsAccepted, datingProfileComplete: profileComplete } = res.data;
+        
+        if (!datingTermsAccepted) {
+          // First time user - show terms
+          setShowTermsModal(true);
+        } else if (!profileComplete) {
+          // Terms accepted but profile not complete
+          router.replace('/dating-profile-setup');
+          return;
+        } else {
+          // Fully setup - load data
+          setDatingProfileComplete(true);
+          fetchUserData();
+          fetchRecommendations();
+        }
+      }
+    } catch (error) {
+      console.error('Error checking dating status:', error);
+      // On error, show terms modal as fallback
+      setShowTermsModal(true);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleAcceptTerms = async () => {
+    try {
+      await authAPI.acceptDatingTerms();
+      setShowTermsModal(false);
+      // Navigate to profile setup
+      router.replace('/dating-profile-setup');
+    } catch (error) {
+      console.error('Error accepting terms:', error);
+      Alert.alert('Error', 'Failed to accept terms. Please try again.');
+    }
+  };
+
+  const handleDeclineTerms = () => {
+    setShowTermsModal(false);
+    router.back();
+  };
 
   const fetchUserData = async () => {
     try {
@@ -98,8 +152,25 @@ export default function DatingScreen() {
     }
   };
 
+  // Show loading while checking profile status
+  if (isLoading) {
+    return (
+      <View style={[styles.container, styles.centered]}>
+        <ActivityIndicator size="large" color="#EC4899" />
+        <Text style={{ marginTop: 16, color: '#6B7280' }}>Loading...</Text>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
+      {/* Dating Terms Modal */}
+      <DatingTermsModal 
+        visible={showTermsModal}
+        onAccept={handleAcceptTerms}
+        onDecline={handleDeclineTerms}
+      />
+
       <View style={styles.centerWrapper}>
         {/* Header */}
         <View style={styles.header}>
@@ -109,7 +180,7 @@ export default function DatingScreen() {
               <Coins size={14} color="black" />
               <Text style={styles.coinsText}>{coins}</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.profileButton} onPress={() => router.push('/(tabs)/profile')}>
+            <TouchableOpacity style={styles.profileButton} onPress={() => router.push('/dating-profile-setup')}>
               <User size={18} color="#111827" />
             </TouchableOpacity>
           </View>
@@ -144,6 +215,7 @@ export default function DatingScreen() {
         </ScrollView>
       </View>
 
+
       {/* Profile Preview Modal */}
       {selectedProfile && (
         <ProfilePreviewModal 
@@ -171,7 +243,7 @@ const MyVibeTab = ({ currentMatch }: { currentMatch: Match | null }) => {
   return (
     <Animated.View entering={FadeIn} style={styles.vibeContainer}>
       <View style={styles.matchCard}>
-        <Image source={{ uri: currentMatch.profileImage || 'https://i.pravatar.cc/300' }} style={styles.matchImage} />
+        <Image source={getAvatarSource(currentMatch.profileImage)} style={styles.matchImage} />
         <LinearGradient colors={['transparent', 'rgba(0,0,0,0.9)']} style={StyleSheet.absoluteFillObject} />
         <View style={styles.activeBadge}><Text style={styles.activeBadgeText}>Active Vibe</Text></View>
         <View style={styles.matchInfo}>
@@ -205,7 +277,10 @@ const ChatTab = ({ currentMatch }: { currentMatch: Match | null }) => {
 
   const loadUser = async () => {
      const userInfo = await require('@react-native-async-storage/async-storage').default.getItem('userInfo');
-     if (userInfo) setCurrentUserId(JSON.parse(userInfo)._id);
+     if (userInfo) {
+       const user = JSON.parse(userInfo);
+       setCurrentUserId(user.id || user._id);
+     }
   };
 
   const fetchMessages = async () => {
@@ -231,7 +306,7 @@ const ChatTab = ({ currentMatch }: { currentMatch: Match | null }) => {
   return (
     <View style={styles.chatContainer}>
       <View style={styles.chatHeader}>
-        <Image source={{ uri: currentMatch.profileImage || 'https://i.pravatar.cc/300' }} style={styles.chatAvatar} />
+        <Image source={getAvatarSource(currentMatch.profileImage)} style={styles.chatAvatar} />
         <View style={styles.chatHeaderInfo}>
           <Text style={styles.chatName}>{currentMatch.fullName || 'User'}</Text>
           <Text style={styles.activeStatus}>Active now</Text>
@@ -275,7 +350,7 @@ const DiscoverTab = ({ suggestions, onSelect }: { suggestions: Match[], onSelect
         {suggestions.map(s => (
           <TouchableOpacity key={s._id} onPress={() => onSelect(s)} style={styles.profileCard}>
             {/* Blurring Logic: In real app, use blurRadius on Image, or overlays */}
-             <Image source={{ uri: s.profileImage || 'https://i.pravatar.cc/300' }} style={styles.profileCardImage} blurRadius={Platform.OS === 'web' ? 10 : 25} />
+             <Image source={getAvatarSource(s.profileImage)} style={styles.profileCardImage} blurRadius={Platform.OS === 'web' ? 10 : 25} />
             <LinearGradient colors={['rgba(0,0,0,0.2)', 'rgba(0,0,0,0.8)']} style={StyleSheet.absoluteFillObject} />
             <View style={styles.sparkleIcon}><Sparkles size={12} color="white" /></View>
             <View style={styles.profileCardContent}>
@@ -308,7 +383,7 @@ const ProfilePreviewModal = ({ profile, coins, onClose, onSwitch }: any) => (
       </View>
       <ScrollView>
         <View style={styles.blurredImageContainer}>
-          <Image source={{ uri: profile.profileImage || 'https://i.pravatar.cc/300' }} style={styles.blurredImage} blurRadius={20} />
+          <Image source={getAvatarSource(profile.profileImage)} style={styles.blurredImage} blurRadius={20} />
           <View style={styles.blurOverlay}><Sparkles size={32} color="white" /><Text style={styles.blurText}>Hidden Identity</Text></View>
         </View>
         <View style={styles.modalSection}><Text style={styles.sectionTitle}>Interests</Text><View style={styles.badgesRow}>{profile.interests?.map((i: string) => <View key={i} style={styles.sectionBadge}><Text style={styles.sectionBadgeText}>{i}</Text></View>)}</View></View>
@@ -376,6 +451,7 @@ const CoinShopModal = ({ coins, onClose, onBuy }: any) => {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'white' },
   centerWrapper: { width: '100%', maxWidth: MAX_WIDTH, alignSelf: 'center', flex: 1, borderRightWidth: isWeb ? 1 : 0, borderLeftWidth: isWeb ? 1 : 0, borderColor: '#F3F4F6' },
+  centered: { justifyContent: 'center', alignItems: 'center' },
   header: { flexDirection: 'row', justifyContent: 'space-between', padding: 16, borderBottomWidth: 1, borderColor: '#F3F4F6' },
   headerTitle: { fontSize: 20, fontWeight: 'bold' },
   headerRight: { flexDirection: 'row', gap: 8 },

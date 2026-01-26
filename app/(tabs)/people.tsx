@@ -3,6 +3,7 @@ import { Search, MapPin, Check } from 'lucide-react-native';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'expo-router';
 import { authAPI } from '../services/api';
+import { getAvatarSource } from '../../utils/imageUtils';
 
 const LIME = '#D4FF00';
 const { width } = Dimensions.get('window');
@@ -67,7 +68,7 @@ export default function PeopleScreen() {
                 style={styles.userCard}
                 onPress={() => router.push(`/user/${user._id}`)}
             >
-                <Image source={{ uri: user.profileImage || 'https://i.pravatar.cc/150' }} style={styles.avatar} />
+                <Image source={getAvatarSource(user.profileImage)} style={styles.avatar} />
                 <View style={styles.userInfo}>
                     <View style={styles.nameRow}>
                         <Text style={styles.fullName}>{user.fullName || user.username}</Text>

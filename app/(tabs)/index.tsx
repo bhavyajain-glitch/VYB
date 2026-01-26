@@ -1,11 +1,16 @@
-import { View, Text, ScrollView, Image, TouchableOpacity, FlatList, StyleSheet, Dimensions, Platform, RefreshControl } from 'react-native';
-import { Heart, MessageCircle, Send, Bookmark, MoreHorizontal, Plus } from 'lucide-react-native';
-import { useState, useEffect } from 'react';
-import Animated, { FadeInDown } from 'react-native-reanimated';
-import { useRouter } from 'expo-router';
+import { View, Text, ScrollView, Image, TouchableOpacity, FlatList, StyleSheet, Dimensions, Platform, RefreshControl, ActivityIndicator, Alert } from 'react-native';
+import { Heart, MessageCircle, Bookmark, MoreHorizontal, Plus } from 'lucide-react-native';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import Animated, { FadeInDown, useAnimatedStyle, useSharedValue, withSpring, withSequence, withDelay, withTiming, runOnJS, interpolate, Extrapolation, Easing } from 'react-native-reanimated';
+import { TapGestureHandler, State } from 'react-native-gesture-handler';
+import { useRouter, useFocusEffect } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { authAPI } from '../services/api';
 import CommentModal from '../../components/CommentModal';
+import PostOptionsModal from '../../components/PostOptionsModal';
+import StoryViewer from '../../components/StoryViewer';
+import { getAvatarSource, getPostImageUrl } from '../../utils/imageUtils';
+import * as ImagePicker from 'expo-image-picker';
 
 const LIME = '#D4FF00';
 const { width } = Dimensions.get('window');
@@ -13,17 +18,6 @@ const isWeb = Platform.OS === 'web';
 const isDesktop = width >= 1024;
 const FEED_WIDTH = 630; // Instagram feed width
 const RIGHT_BAR_WIDTH = 320;
-
-const stories = [
-  { id: 'me', name: 'Your story', avatar: null, isYourStory: true },
-  { id: '1', name: 'riya.patel', avatar: 'https://i.pravatar.cc/150?img=1' },
-  { id: '2', name: 'aditya.k', avatar: 'https://i.pravatar.cc/150?img=2' },
-  { id: '3', name: 'sneha.reddy', avatar: 'https://i.pravatar.cc/150?img=3' },
-  { id: '4', name: 'vivek.shah', avatar: 'https://i.pravatar.cc/150?img=4' },
-  { id: '5', name: 'neha.gupta', avatar: 'https://i.pravatar.cc/150?img=6' },
-  { id: '6', name: 'arjun.m', avatar: 'https://i.pravatar.cc/150?img=7' },
-  { id: '7', name: 'kavya.s', avatar: 'https://i.pravatar.cc/150?img=9' },
-];
 
 const posts = [
   {
@@ -57,71 +51,148 @@ const suggestions = [
   { id: '5', username: 'rohit_gym', subtitle: 'Suggested for you', avatar: 'https://i.pravatar.cc/150?img=19' },
 ];
 
-const StoryItem = ({ item, index }: { item: typeof stories[0], index: number }) => (
+// Story Item Component (Updated for real data)
+const StoryItem = ({ item, index, onPress, onAddStory, currentUserAvatar }: any) => (
   <Animated.View entering={FadeInDown.delay(index * 100).springify()}>
-  <TouchableOpacity style={styles.storyItem}>
-    {item.isYourStory ? (
+  <TouchableOpacity style={styles.storyItem} onPress={item.isAddStory ? onAddStory : () => onPress(index)}>
+    {item.isAddStory ? (
       <View style={styles.addStoryCircle}>
-        <Plus size={24} color="#9CA3AF" />
+        {currentUserAvatar ? (
+          <>
+            <Image source={getAvatarSource(currentUserAvatar)} style={styles.storyAvatarFaded} />
+            <View style={styles.addStoryPlus}><Plus size={16} color="white" /></View>
+          </>
+        ) : (
+          <Plus size={24} color="#9CA3AF" />
+        )}
       </View>
     ) : (
-      <View style={styles.storyRing}>
-        <View style={styles.storyRingSplit} />
-        <Image source={{ uri: item.avatar! }} style={styles.storyAvatar} />
+      <View style={[styles.storyRing, item.hasUnviewed && styles.storyRingActive]}>
+        <Image source={getAvatarSource(item.user?.profileImage)} style={styles.storyAvatar} />
       </View>
     )}
-    <Text style={styles.storyName} numberOfLines={1}>{item.name}</Text>
+    <Text style={styles.storyName} numberOfLines={1}>
+      {item.isAddStory ? 'Your story' : item.user?.username}
+    </Text>
   </TouchableOpacity>
   </Animated.View>
 );
 
 // Post Item Component
-const PostItem = ({ item, onComment, currentUserId }: { item: any, onComment: (id: string) => void, currentUserId: string | null }) => {
-  const router = useRouter(); 
-  const isLikedInitially = item.likes?.includes(currentUserId);
-  const [isLiked, setIsLiked] = useState(isLikedInitially);
+// Post Item Component
+const PostItem = ({ item, onComment, onOptions, currentUserId }: any) => {
+  const router = useRouter();
+  
+  // Helper function to check if user liked the post (handles ObjectId vs string comparison)
+  const checkIfLiked = (likes: any[], userId: string | null): boolean => {
+    if (!likes || !userId) return false;
+    return likes.some(id => id?.toString() === userId?.toString());
+  };
+  
+  const [isLiked, setIsLiked] = useState<boolean>(checkIfLiked(item.likes, currentUserId));
   const [likesCount, setLikesCount] = useState(item.likes?.length || 0);
+  const likeAnimation = useSharedValue(0);
+  const doubleTapRef = useRef(null);
 
-  const handleLike = async () => {
-    // Optimistic Update
-    const previousState = isLiked;
-    setIsLiked(!isLiked);
-    setLikesCount(isLiked ? likesCount - 1 : likesCount + 1);
+  const [isFollowing, setIsFollowing] = useState(false);
 
-    try {
-        await authAPI.toggleLike(item._id);
-    } catch (error) {
-        // Revert on error
-        setIsLiked(previousState);
-        setLikesCount(previousState ? likesCount : likesCount - 1);
-        console.error("Like failed", error);
+  useEffect(() => {
+    if (currentUserId) {
+      setIsLiked(checkIfLiked(item.likes, currentUserId));
+      setLikesCount(item.likes?.length || 0);
     }
+    if (item.user?.followers && currentUserId) {
+      setIsFollowing(checkIfLiked(item.user.followers, currentUserId));
+    }
+  }, [item.likes, item.user, currentUserId]);
+
+  const handleFollow = () => {
+    setIsFollowing(true);
+    authAPI.followUser(item.user._id).catch(() => setIsFollowing(false));
   };
 
+  const handleLike = () => {
+    const newStatus = !isLiked;
+    setIsLiked(newStatus);
+    setLikesCount((prev: number) => newStatus ? prev + 1 : prev - 1);
+    // API Call
+    authAPI.toggleLike(item._id).catch(err => {
+        setIsLiked(!newStatus);
+        setLikesCount((prev: number) => !newStatus ? prev + 1 : prev - 1);
+    });
+  };
+
+  const onDoubleTap = useCallback(() => {
+    likeAnimation.value = 0; // Reset
+    likeAnimation.value = withTiming(1, { duration: 1250, easing: Easing.linear });
+
+    // Toggle like on double tap - like if not liked, unlike if already liked
+    handleLike();
+  }, [isLiked, likeAnimation]);
+
+  const rStyle = useAnimatedStyle(() => {
+    const scale = interpolate(
+        likeAnimation.value,
+        [0, 0.25, 0.6, 1],
+        [0.3, 1.2, 1, 1],
+        Extrapolation.CLAMP
+    );
+
+    const opacity = interpolate(
+        likeAnimation.value,
+        [0, 0.25, 0.6, 1],
+        [0, 1, 1, 0],
+        Extrapolation.CLAMP
+    );
+
+    return {
+      transform: [{ scale }],
+      opacity
+    };
+  });
+
   return (
-    <Animated.View entering={FadeInDown} style={styles.post}>
+    <Animated.View entering={FadeInDown.delay(100).duration(500)} style={styles.post}>
       {/* Header */}
       <View style={styles.postHeader}>
         <View style={styles.authorContainer}>
-          <View style={styles.storyRingSmall}>
-             <Image source={{ uri: item.user?.profileImage || 'https://i.pravatar.cc/150' }} style={styles.authorAvatar} />
-          </View>
+          <TouchableOpacity onPress={() => router.push(`/user/${item.user?._id}`)}>
+             <Image source={getAvatarSource(item.user?.profileImage)} style={styles.authorAvatar} />
+          </TouchableOpacity>
           <View>
             <View style={styles.authorNameRow}>
-              <Text style={styles.authorUsername}>{item.user?.username || 'User'}</Text>
+              <TouchableOpacity onPress={() => router.push(`/user/${item.user?._id}`)}>
+                <Text style={styles.authorUsername}>{item.user?.username || 'User'}</Text>
+              </TouchableOpacity>
               {item.user?.isVerified && <View style={styles.verifiedBadge}><Text style={styles.verifiedCheck}>✓</Text></View>}
-              {/* <Text style={styles.timestamp}>• {new Date(item.createdAt).getHours()}h</Text> */}
+              
+              {!isFollowing && currentUserId && item.user?._id !== currentUserId && (
+                <TouchableOpacity onPress={handleFollow}>
+                    <Text style={{ color: '#0095F6', fontSize: 14, fontWeight: 'bold', marginLeft: 8 }}>• Follow</Text>
+                </TouchableOpacity>
+              )}
             </View>
             <Text style={styles.location}>{item.user?.college || 'CampusConnect'}</Text>
           </View>
         </View>
-        <TouchableOpacity style={styles.moreButton}><MoreHorizontal size={20} color="#111827" /></TouchableOpacity>
+        <TouchableOpacity style={styles.moreButton} onPress={() => onOptions(item)}>
+            <MoreHorizontal size={20} color="#111827" />
+        </TouchableOpacity>
       </View>
 
-      {/* Image */}
-      <View style={styles.imageWrapper}>
-        <Image source={{ uri: item.image }} style={styles.postImage} resizeMode="cover" />
-      </View>
+      {/* Image with Double Tap */}
+      <TapGestureHandler
+        waitFor={doubleTapRef}
+        onActivated={onDoubleTap}
+        numberOfTaps={2}
+      >
+        <Animated.View style={styles.imageWrapper}>
+           <Image source={{ uri: getPostImageUrl(item.image) }} style={styles.postImage} resizeMode="cover" />
+           <Animated.View style={[styles.heartOverlay, rStyle]}>
+              <Heart size={90} color="#FF3040" fill="#FF3040" />
+           </Animated.View>
+        </Animated.View>
+      </TapGestureHandler>
 
       {/* Actions */}
       <View style={styles.postActions}>
@@ -132,11 +203,7 @@ const PostItem = ({ item, onComment, currentUserId }: { item: any, onComment: (i
           <TouchableOpacity onPress={() => onComment(item._id)} style={styles.actionButton}>
             <MessageCircle size={26} color="black" />
           </TouchableOpacity>
-          <TouchableOpacity style={styles.actionButton}>
-            <Send size={26} color="black" />
-          </TouchableOpacity>
         </View>
-        <TouchableOpacity><Bookmark size={26} color="black" /></TouchableOpacity>
       </View>
 
       {/* Likes & Caption */}
@@ -146,8 +213,10 @@ const PostItem = ({ item, onComment, currentUserId }: { item: any, onComment: (i
           <Text style={styles.captionUsername}>{item.user?.username} </Text>
           {item.caption}
         </Text>
-        <Text style={styles.viewComments}>View all comments</Text>
-        <Text style={styles.addComment}>Add a comment...</Text>
+        
+        <TouchableOpacity onPress={() => onComment(item._id)} activeOpacity={0.7} style={{ paddingVertical: 4 }}>
+             <Text style={styles.addComment}>Add a comment...</Text>
+        </TouchableOpacity>
       </View>
     </Animated.View>
   );
@@ -198,25 +267,50 @@ const RightSidebar = () => (
 export default function FeedScreen() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<'home' | 'foryou'>('home');
-  const [posts, setPosts] = useState([]);
+  const [posts, setPosts] = useState<any[]>([]);
   const [refreshing, setRefreshing] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
 
   // Comment Modal State
   const [commentModalVisible, setCommentModalVisible] = useState(false);
   const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [currentUserAvatar, setCurrentUserAvatar] = useState<string | null>(null);
+
+  // Options Modal State
+  const [optionsModalVisible, setOptionsModalVisible] = useState(false);
+  const [selectedPostOptions, setSelectedPostOptions] = useState<any>(null);
+
+  // Stories State
+  const [storyGroups, setStoryGroups] = useState<any[]>([]);
+  const [storyViewerVisible, setStoryViewerVisible] = useState(false);
+  const [selectedStoryIndex, setSelectedStoryIndex] = useState(0);
+  const [uploadingStory, setUploadingStory] = useState(false);
 
   useEffect(() => {
     checkAuth();
-    fetchPosts();
+    fetchPosts(1, true);
+    fetchStories();
   }, []);
+
+  // Refresh feed when screen comes into focus (e.g., when tapping logo)
+  useFocusEffect(
+    useCallback(() => {
+      fetchPosts(1, true);
+      fetchStories();
+    }, [])
+  );
 
   const checkAuth = async () => {
     try {
         const userInfo = await AsyncStorage.getItem('userInfo');
         if (userInfo) {
             const user = JSON.parse(userInfo);
-            setCurrentUserId(user._id);
+            // Handle both 'id' and '_id' properties for compatibility
+            setCurrentUserId(user.id || user._id);
+            setCurrentUserAvatar(user.profileImage);
         } else {
             router.replace('/onboarding');
         }
@@ -225,24 +319,120 @@ export default function FeedScreen() {
     }
   };
 
-  const fetchPosts = async () => {
+  const fetchStories = async () => {
     try {
-      const res = await authAPI.getPosts();
-      setPosts(res.data);
+      const res = await authAPI.getStories();
+      setStoryGroups(res.data || []);
     } catch (error) {
-      console.error('Error fetching posts:', error);
+      console.error('Error fetching stories:', error);
     }
   };
 
+  const handleAddStory = async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [9, 16],
+        quality: 0.8,
+        base64: true
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        setUploadingStory(true);
+        let imageData = result.assets[0].uri;
+        
+        // Ensure base64 for web
+        if (result.assets[0].base64) {
+          imageData = `data:image/jpeg;base64,${result.assets[0].base64}`;
+        } else if (Platform.OS === 'web') {
+           // Convert blob URL to base64 manually
+           const response = await fetch(result.assets[0].uri);
+           const blob = await response.blob();
+           const base64 = await new Promise((resolve) => {
+             const reader = new FileReader();
+             reader.onloadend = () => resolve(reader.result);
+             reader.readAsDataURL(blob);
+           });
+           imageData = base64 as string;
+        }
+
+        await authAPI.createStory(imageData);
+        Alert.alert('Success', 'Story added! It will be visible for 24 hours.');
+        fetchStories();
+      }
+    } catch (error: any) {
+      console.error('Error creating story:', error);
+      Alert.alert('Error', error.message || 'Failed to create story');
+    } finally {
+      setUploadingStory(false);
+    }
+  };
+
+  const openStoryViewer = (index: number) => {
+    setSelectedStoryIndex(index);
+    setStoryViewerVisible(true);
+  };
+
+  const fetchPosts = async (pageNum: number = 1, isRefresh: boolean = false) => {
+    try {
+      if (isRefresh) {
+        setRefreshing(true);
+      }
+      const res = await authAPI.getPosts(pageNum, 10);
+      
+      if (isRefresh) {
+        setPosts(res.data.posts);
+        setPage(1);
+      } else {
+        setPosts(prev => [...prev, ...res.data.posts]);
+      }
+      
+      setHasMore(res.data.hasMore);
+      setPage(pageNum);
+    } catch (error) {
+      console.error('Error fetching posts:', error);
+    } finally {
+      setRefreshing(false);
+      setLoadingMore(false);
+    }
+  };
+
+  const loadMorePosts = () => {
+    if (loadingMore || !hasMore) return;
+    setLoadingMore(true);
+    fetchPosts(page + 1, false);
+  };
+
   const onRefresh = async () => {
-    setRefreshing(true);
-    await Promise.all([fetchPosts(), checkAuth()]);
-    setRefreshing(false);
+    await Promise.all([fetchPosts(1, true), fetchStories()]);
+    await checkAuth();
+  };
+
+  // Handle scroll to detect when near bottom
+  const handleScroll = (event: any) => {
+    const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent;
+    const paddingToBottom = 100; // Load more when 100px from bottom
+    
+    if (layoutMeasurement.height + contentOffset.y >= contentSize.height - paddingToBottom) {
+      loadMorePosts();
+    }
   };
 
   const openComments = (postId: string) => {
       setSelectedPostId(postId);
       setCommentModalVisible(true);
+  };
+
+  const openOptions = (post: any) => {
+    setSelectedPostOptions(post);
+    setOptionsModalVisible(true);
+  };
+
+  const handleBlockUser = (userId: string) => {
+    // Remove all posts by this user from the current feed locally
+    setPosts(prevPosts => prevPosts.filter(p => p.user._id !== userId));
+    Alert.alert('Blocked', 'This user has been blocked. You will no longer see their posts.');
   };
 
   return (
@@ -254,6 +444,8 @@ export default function FeedScreen() {
             showsVerticalScrollIndicator={false} 
             contentContainerStyle={styles.scrollContent}
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+            onScroll={handleScroll}
+            scrollEventThrottle={400}
           >
             {/* Stories */}
             <ScrollView 
@@ -262,19 +454,66 @@ export default function FeedScreen() {
               contentContainerStyle={styles.storiesContainer}
               style={styles.storiesScroll}
             >
-              {stories.map((story, index) => <StoryItem key={story.id} item={story} index={index} />)}
+              {/* Add Story Button */}
+              <StoryItem 
+                item={{ isAddStory: true }} 
+                index={0} 
+                onAddStory={handleAddStory}
+                currentUserAvatar={currentUserAvatar}
+                onPress={() => {}}
+              />
+              {/* Other Stories */}
+              {storyGroups.map((group: any, index: number) => (
+                <StoryItem 
+                  key={group.user._id} 
+                  item={group} 
+                  index={index + 1}
+                  onPress={() => openStoryViewer(index)}
+                  onAddStory={handleAddStory}
+                  currentUserAvatar={currentUserAvatar}
+                />
+              ))}
+              {uploadingStory && (
+                <View style={styles.storyItem}>
+                  <View style={styles.addStoryCircle}>
+                    <ActivityIndicator color="#8B5CF6" />
+                  </View>
+                  <Text style={styles.storyName}>Uploading...</Text>
+                </View>
+              )}
             </ScrollView>
 
             {/* Posts */}
             <View style={styles.postsList}>
-              {posts.length === 0 ? (
+              {posts.length === 0 && !refreshing ? (
                 <View style={{ padding: 20, alignItems: 'center' }}>
                     <Text style={{ color: '#9CA3AF' }}>No posts yet. Be the first to post!</Text>
                 </View>
               ) : (
                 posts.map((post: any, index: number) => (
-                    <PostItem key={post._id} item={post} onComment={openComments} currentUserId={currentUserId} />
+                    <PostItem 
+                        key={post._id} 
+                        item={post} 
+                        onComment={openComments} 
+                        onOptions={openOptions}
+                        currentUserId={currentUserId} 
+                    />
                 ))
+              )}
+              
+              {/* Loading More Indicator */}
+              {loadingMore && (
+                <View style={{ padding: 20, alignItems: 'center' }}>
+                  <ActivityIndicator size="small" color="#8B5CF6" />
+                  <Text style={{ color: '#9CA3AF', marginTop: 8, fontSize: 12 }}>Loading more posts...</Text>
+                </View>
+              )}
+              
+              {/* End of Feed Indicator */}
+              {!hasMore && posts.length > 0 && (
+                <View style={{ padding: 20, alignItems: 'center' }}>
+                  <Text style={{ color: '#9CA3AF', fontSize: 12 }}>✨ You're all caught up!</Text>
+                </View>
               )}
             </View>
           </ScrollView>
@@ -301,6 +540,22 @@ export default function FeedScreen() {
         onClose={() => setCommentModalVisible(false)} 
         postId={selectedPostId} 
       />
+
+      {/* Story Viewer */}
+      <StoryViewer
+        visible={storyViewerVisible}
+        storyGroups={storyGroups}
+        initialGroupIndex={selectedStoryIndex}
+        onClose={() => setStoryViewerVisible(false)}
+      />
+
+      {/* Post Options Modal */}
+      <PostOptionsModal 
+        visible={optionsModalVisible}
+        onClose={() => setOptionsModalVisible(false)}
+        post={selectedPostOptions}
+        onBlockUser={handleBlockUser}
+      />
     </View>
   );
 }
@@ -317,8 +572,11 @@ const styles = StyleSheet.create({
   storiesScroll: { marginBottom: 24, width: '100%', paddingLeft: isDesktop ? 0 : 0 },
   storiesContainer: { paddingHorizontal: 16, gap: 16 },
   storyItem: { alignItems: 'center', width: 72 },
-  addStoryCircle: { width: 64, height: 64, borderRadius: 32, backgroundColor: '#F3F4F6', alignItems: 'center', justifyContent: 'center' },
-  storyRing: { padding: 3, borderRadius: 38, borderWidth: 2, borderColor: '#D4FF00', alignItems: 'center', justifyContent: 'center' },
+  addStoryCircle: { width: 64, height: 64, borderRadius: 32, backgroundColor: '#F3F4F6', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  addStoryPlus: { position: 'absolute', bottom: 0, right: 0, backgroundColor: '#3B82F6', width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: 'white' },
+  storyAvatarFaded: { width: 64, height: 64, borderRadius: 32, opacity: 0.7 },
+  storyRing: { padding: 3, borderRadius: 38, borderWidth: 2, borderColor: '#9CA3AF', alignItems: 'center', justifyContent: 'center' },
+  storyRingActive: { borderColor: '#D4FF00' },
   storyRingSmall: { padding: 2, borderRadius: 24, borderWidth: 2, borderColor: '#D4FF00' },
   storyAvatar: { width: 60, height: 60, borderRadius: 30, borderWidth: 2, borderColor: 'white' },
   storyName: { fontSize: 11, color: '#111827', marginTop: 4, textAlign: 'center' },
@@ -336,8 +594,10 @@ const styles = StyleSheet.create({
   timestamp: { fontSize: 14, color: '#6B7280' },
   location: { fontSize: 12, color: '#111827' },
   moreButton: { padding: 4 },
-  imageWrapper: { borderRadius: 4, overflow: 'hidden', borderWidth: 1, borderColor: '#F3F4F6' },
+
+  imageWrapper: { borderRadius: 4, overflow: 'hidden', borderWidth: 1, borderColor: '#F3F4F6', position: 'relative' },
   postImage: { width: '100%', aspectRatio: 1 },
+  heartOverlay: { position: 'absolute', top: '50%', left: '50%', marginLeft: -40, marginTop: -40, zIndex: 10, shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 4.65 },
   
   postActions: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12 },
   actionsLeft: { flexDirection: 'row', alignItems: 'center', gap: 16 },

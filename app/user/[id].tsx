@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { ArrowLeft, MessageCircle } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { authAPI } from '../services/api';
+import { getAvatarSource, getPostImageUrl } from '../../utils/imageUtils';
 
 const LIME = '#D4FF00';
 
@@ -56,10 +57,14 @@ export default function PublicProfileScreen() {
   };
 
   const goBack = () => {
-      if (router.canGoBack()) {
-          router.back();
-      } else {
-          router.replace('/'); // Fallback to home/feed if deep linked
+      try {
+        if (router.canGoBack()) {
+            router.back();
+        } else {
+            router.replace('/(tabs)'); // Explicitly go to tabs/feed
+        }
+      } catch (e) {
+        router.replace('/(tabs)');
       }
   };
 
@@ -69,17 +74,21 @@ export default function PublicProfileScreen() {
   return (
     <View style={styles.container}>
       <Stack.Screen options={{ headerShown: false }} />
+      
+      {/* Fixed Back Button */}
+      <View style={styles.fixedHeader}>
+        <TouchableOpacity style={styles.backButton} onPress={goBack} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+            <ArrowLeft size={24} color="white" />
+        </TouchableOpacity>
+      </View>
+
       <ScrollView>
         {/* Header (Same simplified style as Profile) */}
-        <LinearGradient colors={['#A855F7', '#7C3AED']} style={styles.headerBg}>
-            <TouchableOpacity style={styles.backButton} onPress={goBack}>
-                <ArrowLeft size={24} color="white" />
-            </TouchableOpacity>
-        </LinearGradient>
+        <LinearGradient colors={['#A855F7', '#7C3AED']} style={styles.headerBg} />
 
         <View style={styles.profileSection}>
             <View style={styles.avatarBorder}>
-                <Image source={{ uri: user.profileImage || 'https://i.pravatar.cc/150' }} style={styles.avatar} />
+                <Image source={getAvatarSource(user.profileImage)} style={styles.avatar} />
             </View>
 
             <Text style={styles.name}>{user.fullName}</Text>
@@ -93,9 +102,6 @@ export default function PublicProfileScreen() {
                     <Text style={[styles.primaryButtonText, isFollowing && styles.followingText]}>
                         {isFollowing ? 'Following' : 'Follow'}
                     </Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.secondaryButton}>
-                    <MessageCircle size={20} color="black" />
                 </TouchableOpacity>
             </View>
 
@@ -126,7 +132,7 @@ export default function PublicProfileScreen() {
             <View style={styles.postsGrid}>
                 {posts.map((post: any) => (
                     <View key={post._id} style={styles.postItem}>
-                        <Image source={{ uri: post.image }} style={styles.postImage} />
+                        <Image source={{ uri: getPostImageUrl(post.image) }} style={styles.postImage} />
                     </View>
                 ))}
             </View>
@@ -146,8 +152,9 @@ const InfoItem = ({ label, value }: any) => value ? (
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'white' },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  fixedHeader: { position: 'absolute', top: 50, left: 20, zIndex: 100 },
   headerBg: { height: 120, padding: 20, paddingTop: 60 },
-  backButton: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
+  backButton: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.3)', borderRadius: 20 },
   
   profileSection: { paddingHorizontal: 24, marginTop: -50, alignItems: 'center' },
   avatarBorder: { padding: 4, backgroundColor: 'white', borderRadius: 60 },

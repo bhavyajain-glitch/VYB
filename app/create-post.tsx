@@ -122,8 +122,18 @@ export default function CreatePostScreen() {
 
     setIsLoading(true);
     try {
+      let imageUrl = image;
+
+      // Upload to Cloudinary if it's a base64/data URL
+      if (image.startsWith('data:')) {
+        console.log('📤 Uploading image to Cloudinary...');
+        const uploadRes = await authAPI.uploadImage(image, 'posts');
+        imageUrl = uploadRes.data.url;
+        console.log('✅ Image uploaded:', imageUrl);
+      }
+
       await authAPI.createPost({
-        image, // This is now a safe Data URL
+        image: imageUrl,
         caption
       });
       

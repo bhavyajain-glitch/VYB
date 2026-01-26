@@ -38,12 +38,12 @@ export default function TabLayout() {
   // Web Sidebar Component
   const WebSidebar = () => (
     <View style={styles.webSidebar}>
-      <View style={styles.sidebarLogo}>
+      <TouchableOpacity style={styles.sidebarLogo} onPress={() => router.replace('/(tabs)')}>
         <View style={[styles.logoBox, { backgroundColor: accentColor }]}>
-          <Text style={styles.logoText}>C</Text>
+          <Text style={styles.logoText}>V</Text>
         </View>
-        <Text style={[styles.sidebarLogoText, { display: width < 1264 ? 'none' : 'flex' }]}>CampusConnect</Text>
-      </View>
+        <Text style={[styles.sidebarLogoText, { display: width < 1264 ? 'none' : 'flex' }]}>Vybe</Text>
+      </TouchableOpacity>
 
       <View style={styles.sidebarMenu}>
         <SidebarLink icon={Home} label="Home" path="/(tabs)" active={pathname === '/' || pathname === '/index'} colors={accentColor} />
@@ -91,25 +91,25 @@ export default function TabLayout() {
       {/* Mobile Header (Hidden on Desktop) */}
       {!isDesktop && (
         <View style={styles.header}>
-          <View style={styles.logoContainer}>
+          <TouchableOpacity style={styles.logoContainer} onPress={() => router.replace('/(tabs)')}>
             <View style={[styles.logoBox, { backgroundColor: accentColor }]}>
-              <Text style={styles.logoText}>C</Text>
+              <Text style={styles.logoText}>V</Text>
             </View>
-            <Text style={styles.logoTitle}>CampusConnect</Text>
-          </View>
+            <Text style={styles.logoTitle}>Vybe</Text>
+          </TouchableOpacity>
           <TouchableOpacity 
             onPress={handleModeSwitch}
-            style={[styles.modeToggle, { backgroundColor: accentColor }]}
+            style={[styles.modeToggle, { backgroundColor: isDatingMode ? LIME : PINK }]}
           >
             {isDatingMode ? (
               <>
-                <Heart size={14} color="white" fill="white" />
-                <Text style={styles.modeTextWhite}>Dating</Text>
+                <Users size={14} color="black" />
+                <Text style={styles.modeTextBlack}>Vybe</Text>
               </>
             ) : (
               <>
-                <Users size={14} color="black" />
-                <Text style={styles.modeTextBlack}>Social</Text>
+                <Heart size={14} color="white" fill="white" />
+                <Text style={styles.modeTextWhite}>Dating</Text>
               </>
             )}
           </TouchableOpacity>
@@ -152,21 +152,6 @@ export default function TabLayout() {
               }} 
             />
 
-            <Tabs.Screen 
-              name="create" 
-              options={{ 
-                title: 'Create', 
-                tabBarIcon: ({ color, size }) => <PlusSquare size={26} color={color} strokeWidth={2} />,
-                href: '/create-post',
-              }}
-              listeners={({ navigation }) => ({
-                  tabPress: (e: any) => {
-                    e.preventDefault();
-                    router.push('/create-post');
-                  },
-              })}
-            />
-            
             <Tabs.Screen 
               name="people" 
               options={{ 
