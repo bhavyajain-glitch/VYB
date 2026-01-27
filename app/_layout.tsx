@@ -18,6 +18,7 @@ export default function RootLayout() {
         <Stack.Screen name="onboarding" />
         <Stack.Screen name="auth" />
         <Stack.Screen name="profile-setup" />
+        <Stack.Screen name="edit-profile" />
         <Stack.Screen name="dating-profile-setup" />
         <Stack.Screen name="create-post" options={{ presentation: 'modal' }} />
         <Stack.Screen name="post/[id]" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />

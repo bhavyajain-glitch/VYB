@@ -126,7 +126,7 @@ export default function ProfileScreen() {
               <View style={styles.avatarBorder}>
                 <Image source={getAvatarSource(user?.profileImage)} style={styles.avatar} />
               </View>
-              <TouchableOpacity style={styles.editButton} onPress={() => router.push('/profile-setup')}>
+              <TouchableOpacity style={styles.editButton} onPress={() => router.push('/edit-profile')}>
                 <Edit3 size={14} color="black" />
                 <Text style={styles.editButtonText}>Edit Profile</Text>
               </TouchableOpacity>
