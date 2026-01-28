@@ -12,15 +12,6 @@ on:
       - 'README.md'
       - '.gitignore'
   workflow_dispatch:
-    inputs:
-      version:
-        description: 'Version name (e.g., 1.0.2)'
-        required: true
-        default: '1.0.2'
-      force_update:
-        description: 'Force update (true/false)'
-        required: false
-        default: 'false'
 
 env:
   EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
@@ -34,6 +25,18 @@ jobs:
       - name: 📥 Checkout repository
         uses: actions/checkout@v4
 
+      - name: 🔑 Check EXPO_TOKEN
+        run: |
+          if [ -z "$EXPO_TOKEN" ]; then
+            echo "❌ ERROR: EXPO_TOKEN secret is not set!"
+            echo "Please add your Expo token to GitHub Secrets:"
+            echo "1. Go to https://expo.dev/settings/access-tokens"
+            echo "2. Create a new token"
+            echo "3. Add to repo: Settings → Secrets → Actions → EXPO_TOKEN"
+            exit 1
+          fi
+          echo "✅ EXPO_TOKEN is set"
+
       - name: 🏗️ Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -46,47 +49,67 @@ jobs:
       - name: 🔧 Setup EAS CLI
         run: npm install -g eas-cli
 
-      - name: 🔐 Setup Expo credentials
-        run: eas whoami
+      - name: 🔐 Verify Expo login
+        run: |
+          echo "Checking Expo authentication..."
+          eas whoami || { echo "❌ Failed to authenticate with Expo"; exit 1; }
 
       - name: 📱 Build Android APK
-        run: eas build -p android --profile production --non-interactive --no-wait
         id: build
-
-      - name: ⏳ Wait for build to complete
         run: |
-          echo "Waiting for EAS build to complete..."
-          BUILD_ID=$(eas build:list --platform android --limit 1 --json | jq -r '.[0].id')
-          echo "Build ID: $BUILD_ID"
+          echo "Starting EAS build..."
+          BUILD_OUTPUT=$(eas build -p android --profile production --non-interactive 2>&1) || true
+          echo "$BUILD_OUTPUT"
           
-          while true; do
-            STATUS=$(eas build:view $BUILD_ID --json | jq -r '.status')
-            echo "Build status: $STATUS"
+          # Extract build URL from output
+          BUILD_URL=$(echo "$BUILD_OUTPUT" | grep -o 'https://expo.dev/accounts/[^[:space:]]*' | head -1)
+          
+          if [ -n "$BUILD_URL" ]; then
+            echo "BUILD_URL=$BUILD_URL" >> $GITHUB_OUTPUT
+            echo "✅ Build started: $BUILD_URL"
+          else
+            echo "❌ Could not extract build URL"
+            exit 1
+          fi
+
+      - name: ⏳ Wait for build and download APK
+        run: |
+          echo "Waiting for EAS build to complete (this may take 15-30 minutes)..."
+          
+          # Use EAS CLI to wait for build
+          for i in {1..60}; do
+            echo "Checking build status... (attempt $i/60)"
+            
+            BUILD_JSON=$(eas build:list --platform android --limit 1 --json 2>/dev/null) || continue
+            
+            STATUS=$(echo "$BUILD_JSON" | jq -r '.[0].status' 2>/dev/null) || continue
+            echo "Status: $STATUS"
             
             if [ "$STATUS" = "FINISHED" ]; then
-              echo "Build completed successfully!"
-              break
+              APK_URL=$(echo "$BUILD_JSON" | jq -r '.[0].artifacts.buildUrl' 2>/dev/null)
+              echo "✅ Build completed!"
+              echo "APK_URL=$APK_URL" >> $GITHUB_ENV
+              
+              echo "Downloading APK..."
+              curl -L -o app-release.apk "$APK_URL"
+              echo "✅ APK downloaded successfully!"
+              exit 0
             elif [ "$STATUS" = "ERRORED" ] || [ "$STATUS" = "CANCELED" ]; then
-              echo "Build failed with status: $STATUS"
+              echo "❌ Build failed with status: $STATUS"
               exit 1
             fi
             
-            sleep 60
+            sleep 30
           done
-
-      - name: 📥 Download APK from EAS
-        run: |
-          BUILD_ID=$(eas build:list --platform android --limit 1 --json | jq -r '.[0].id')
-          APK_URL=$(eas build:view $BUILD_ID --json | jq -r '.artifacts.buildUrl')
-          echo "APK URL: $APK_URL"
-          curl -L -o app-release.apk "$APK_URL"
-          echo "APK_URL=$APK_URL" >> $GITHUB_ENV
+          
+          echo "❌ Build timed out after 30 minutes"
+          exit 1
 
       - name: 📝 Get version info
         id: version
         run: |
           VERSION_NAME=$(jq -r '.expo.version' app.json)
-          VERSION_CODE=$(jq -r '.expo.android.versionCode' app.json)
+          VERSION_CODE=$(jq -r '.expo.android.versionCode // 1' app.json)
           echo "VERSION_NAME=$VERSION_NAME" >> $GITHUB_OUTPUT
           echo "VERSION_CODE=$VERSION_CODE" >> $GITHUB_OUTPUT
           echo "Version: $VERSION_NAME (Code: $VERSION_CODE)"
@@ -119,5 +142,4 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Version:** v${{ steps.version.outputs.VERSION_NAME }}" >> $GITHUB_STEP_SUMMARY
           echo "**APK URL:** https://github.com/${{ github.repository }}/releases/download/v${{ steps.version.outputs.VERSION_NAME }}/app-release.apk" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Update your backend with this URL!" >> $GITHUB_STEP_SUMMARY
+
