@@ -1,8 +1,8 @@
-# Native Build Workflow - Only for APK releases
-# Triggers on version bump or manual dispatch
-# Non-blocking: starts build and exits (check Expo dashboard for status)
+# Ultra-Fast Local Build Workflow
+# Builds APK LOCALLY on GitHub Actions runner (Linux) - NO EXPO QUEUE!
+# Expected time: 8-15 minutes (vs 30+ min with cloud queue)
 
-name: Build Android APK (Native)
+name: Build Android APK (Fast Local)
 
 on:
   push:
@@ -12,25 +12,14 @@ on:
       - 'eas.json'
       - 'android/**'
   workflow_dispatch:
-    inputs:
-      create_release:
-        description: 'Create GitHub Release after build'
-        required: false
-        type: boolean
-        default: true
 
 env:
   EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
 
 jobs:
-  # Job 1: Start build (fast, non-blocking)
-  start-build:
-    name: Start EAS Build
+  build-local:
+    name: Local Android Build
     runs-on: ubuntu-latest
-    outputs:
-      build_id: ${{ steps.build.outputs.build_id }}
-      version: ${{ steps.version.outputs.version }}
-      version_code: ${{ steps.version.outputs.version_code }}
     
     steps:
       - name: 📥 Checkout
@@ -52,11 +41,26 @@ jobs:
           echo "version_code=$VERSION_CODE" >> $GITHUB_OUTPUT
           echo "📦 Version: $VERSION (Code: $VERSION_CODE)"
 
+      - name: ☕ Setup Java JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
       - name: 🏗️ Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
+
+      - name: 📦 Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: gradle-${{ runner.os }}-
 
       - name: 📦 Cache Expo
         uses: actions/cache@v4
@@ -75,105 +79,50 @@ jobs:
       - name: 🔐 Verify Expo login
         run: eas whoami
 
-      - name: 📱 Start EAS Build (non-blocking)
-        id: build
+      - name: 📱 Build APK Locally (NO QUEUE!)
         run: |
-          echo "Starting EAS build..."
+          echo "🚀 Starting LOCAL build (no cloud queue)..."
+          echo "This runs on Ubuntu, not Expo servers"
+          echo ""
           
-          # Start build and capture JSON output
-          # Note: --no-wait exits with code 5 on success, so we ignore exit codes
-          BUILD_JSON=$(eas build -p android --profile production --non-interactive --json --no-wait 2>&1) || true
+          # Build locally - this runs on GitHub Actions runner, NOT Expo cloud
+          eas build --platform android --profile production --local --non-interactive
           
-          echo "$BUILD_JSON"
+          # Find the APK
+          APK_PATH=$(find . -name "*.apk" -type f | head -1)
           
-          # Extract build ID from JSON (look for the id field in the array)
-          BUILD_ID=$(echo "$BUILD_JSON" | grep -o '"id": *"[^"]*"' | head -1 | cut -d'"' -f4)
-          
-          if [ -n "$BUILD_ID" ] && [ "$BUILD_ID" != "null" ]; then
-            echo "build_id=$BUILD_ID" >> $GITHUB_OUTPUT
-            echo "✅ Build started with ID: $BUILD_ID"
-            echo "🔗 Monitor at: https://expo.dev/accounts/lohegaon/builds/$BUILD_ID"
+          if [ -n "$APK_PATH" ]; then
+            echo "✅ Build complete!"
+            echo "APK at: $APK_PATH"
+            mv "$APK_PATH" app-release.apk
           else
-            echo "❌ Could not extract build ID"
-            echo "Output was: $BUILD_JSON"
+            echo "❌ APK not found"
+            ls -la
             exit 1
           fi
 
-      - name: 📝 Build Summary
+      - name: 📊 Build Summary
         run: |
-          echo "## 🚀 Build Started!" >> $GITHUB_STEP_SUMMARY
+          echo "## ⚡ Local Build Complete!" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**No Expo queue wait!** Built directly on GitHub runner." >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
           echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
-          echo "| **Version** | v${{ steps.version.outputs.version }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Version Code** | ${{ steps.version.outputs.version_code }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Build ID** | ${{ steps.build.outputs.build_id }} |" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "⏳ **Build will complete in ~15-25 minutes**" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Monitor progress: https://expo.dev/builds" >> $GITHUB_STEP_SUMMARY
-
-  # Job 2: Wait for build and create release (separate job)
-  wait-and-release:
-    name: Wait & Release
-    needs: start-build
-    if: ${{ github.event.inputs.create_release != 'false' }}
-    runs-on: ubuntu-latest
-    
-    steps:
-      - name: 📥 Checkout
-        uses: actions/checkout@v4
-
-      - name: 🔧 Setup EAS CLI
-        run: npm install -g eas-cli
-
-      - name: ⏳ Wait for build to complete
-        id: wait
-        run: |
-          BUILD_ID="${{ needs.start-build.outputs.build_id }}"
-          echo "Waiting for build $BUILD_ID to complete..."
-          
-          for i in {1..60}; do
-            echo "Checking status... (attempt $i/60)"
-            
-            BUILD_JSON=$(eas build:view "$BUILD_ID" --json 2>/dev/null) || { sleep 30; continue; }
-            STATUS=$(echo "$BUILD_JSON" | jq -r '.status')
-            
-            echo "Status: $STATUS"
-            
-            if [ "$STATUS" = "FINISHED" ]; then
-              APK_URL=$(echo "$BUILD_JSON" | jq -r '.artifacts.buildUrl')
-              echo "apk_url=$APK_URL" >> $GITHUB_OUTPUT
-              echo "✅ Build completed!"
-              exit 0
-            elif [ "$STATUS" = "ERRORED" ] || [ "$STATUS" = "CANCELED" ]; then
-              echo "❌ Build failed: $STATUS"
-              exit 1
-            fi
-            
-            sleep 30
-          done
-          
-          echo "❌ Timeout waiting for build"
-          exit 1
-        env:
-          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-
-      - name: 📥 Download APK
-        run: |
-          curl -L -o app-release.apk "${{ steps.wait.outputs.apk_url }}"
-          ls -la app-release.apk
+          echo "| Version | v${{ steps.version.outputs.version }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Version Code | ${{ steps.version.outputs.version_code }} |" >> $GITHUB_STEP_SUMMARY
+          ls -lh app-release.apk >> $GITHUB_STEP_SUMMARY || true
 
       - name: 🏷️ Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: v${{ needs.start-build.outputs.version }}
-          name: Release v${{ needs.start-build.outputs.version }}
+          tag_name: v${{ steps.version.outputs.version }}
+          name: Release v${{ steps.version.outputs.version }}
           body: |
-            ## Vybe v${{ needs.start-build.outputs.version }}
+            ## Vybe v${{ steps.version.outputs.version }}
             
-            **Version Code:** ${{ needs.start-build.outputs.version_code }}
-            **Build ID:** ${{ needs.start-build.outputs.build_id }}
+            **Version Code:** ${{ steps.version.outputs.version_code }}
+            **Built locally** on GitHub Actions (no Expo queue!)
             
             ### Download
             Download the APK file below and install on your Android device.
