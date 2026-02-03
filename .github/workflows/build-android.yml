@@ -4,6 +4,9 @@
 
 name: Build Android APK (Fast Local)
 
+permissions:
+  contents: write
+
 on:
   push:
     branches: [main]
