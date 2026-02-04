@@ -34,6 +34,7 @@
     "expo-linking": "~8.0.11",
     "expo-router": "~6.0.22",
     "expo-status-bar": "~3.0.9",
+    "expo-updates": "~29.0.16",
     "express": "^5.2.1",
     "lucide-react-native": "^0.563.0",
     "mongoose": "^9.1.5",
