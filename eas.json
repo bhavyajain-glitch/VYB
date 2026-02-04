@@ -1,0 +1,39 @@
+{
+  "cli": {
+    "version": ">= 5.0.0"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal"
+    },
+    "preview": {
+      "channel": "preview",
+      "android": {
+        "buildType": "apk"
+      },
+      "distribution": "internal",
+      "env": {
+        "JAVA_HOME": "/usr/lib/jvm/java-1.17.0-openjdk-amd64",
+        "ANDROID_HOME": "/home/pc/Android/Sdk"
+      }
+    },
+    "production": {
+      "channel": "production",
+      "android": {
+        "buildType": "apk",
+        "cache": {
+          "key": "build-cache-v1",
+          "paths": [
+            "android/.gradle",
+            "android/build",
+            "node_modules"
+          ]
+        }
+      }
+    }
+  },
+  "submit": {
+    "production": {}
+  }
+}

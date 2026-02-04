@@ -1,0 +1,84 @@
+{
+  "expo": {
+    "name": "Vyb",
+    "slug": "campusconnect",
+    "version": "1.1.1",
+    "orientation": "portrait",
+    "icon": "./assets/vyb-logo-new.png",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/vyb-logo-new.png",
+      "backgroundColor": "#121212",
+      "resizeMode": "contain"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.campusconnect.app"
+    },
+    "android": {
+      "package": "com.campusconnect.app",
+      "versionCode": 12,
+      "googleServicesFile": "./google-services.json",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/vyb-logo-new.png",
+        "backgroundColor": "#121212"
+      },
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.POST_NOTIFICATIONS"
+      ]
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "single",
+      "name": "Vyb",
+      "shortName": "Vyb",
+      "description": "Campus social network for students",
+      "themeColor": "#D4FF00",
+      "backgroundColor": "#ffffff"
+    },
+    "jsEngine": "hermes",
+    "plugins": [
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "enableProguardInReleaseBuilds": true,
+            "enableShrinkResourcesInReleaseBuilds": true
+          }
+        }
+      ],
+      "expo-updates",
+      "expo-router",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow CampusConnect to access your photos for profile and posts.",
+          "cameraPermission": "Allow CampusConnect to use your camera to take profile and post photos."
+        }
+      ],
+      "expo-font",
+      "@react-native-firebase/app",
+      "@react-native-firebase/crashlytics"
+    ],
+    "scheme": "campusconnect",
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "26f32825-e835-4da0-9347-e0b67cf71cb0"
+      }
+    },
+    "updates": {
+      "url": "https://u.expo.dev/26f32825-e835-4da0-9347-e0b67cf71cb0",
+      "fallbackToCacheTimeout": 0
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    }
+  }
+}
