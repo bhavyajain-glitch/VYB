@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "801034812193",
+    "project_id": "vybe-22761",
+    "storage_bucket": "vybe-22761.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:801034812193:android:ddb3b1bc9f7519e5bf1c60",
+        "android_client_info": {
+          "package_name": "com.campusconnect.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDAGEogZgej42mkEkJAm0exRakwrbMGDUE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

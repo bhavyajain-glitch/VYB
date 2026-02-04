@@ -1,0 +1,135 @@
+# Ultra-Fast Local Build Workflow
+# Builds APK LOCALLY on GitHub Actions runner (Linux) - NO EXPO QUEUE!
+# Expected time: 8-15 minutes (vs 30+ min with cloud queue)
+
+name: Build Android APK (Fast Local)
+
+permissions:
+  contents: write
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'app.json'
+      - 'eas.json'
+      - 'android/**'
+  workflow_dispatch:
+
+env:
+  EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+
+jobs:
+  build-local:
+    name: Local Android Build
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      - name: 🔑 Check EXPO_TOKEN
+        run: |
+          if [ -z "$EXPO_TOKEN" ]; then
+            echo "❌ EXPO_TOKEN not set. Add it to GitHub Secrets."
+            exit 1
+          fi
+
+      - name: 📝 Get version info
+        id: version
+        run: |
+          VERSION=$(jq -r '.expo.version' app.json)
+          VERSION_CODE=$(jq -r '.expo.android.versionCode // 1' app.json)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "version_code=$VERSION_CODE" >> $GITHUB_OUTPUT
+          echo "📦 Version: $VERSION (Code: $VERSION_CODE)"
+
+      - name: ☕ Setup Java JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: 🏗️ Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: 📦 Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: gradle-${{ runner.os }}-
+
+      - name: 📦 Cache Expo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.expo
+            ~/.eas
+          key: expo-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: 📦 Install dependencies
+        run: npm ci
+
+      - name: 🔧 Setup EAS CLI
+        run: npm install -g eas-cli
+
+      - name: 🔐 Verify Expo login
+        run: eas whoami
+
+      - name: 📱 Build APK Locally (NO QUEUE!)
+        run: |
+          echo "🚀 Starting LOCAL build (no cloud queue)..."
+          echo "This runs on Ubuntu, not Expo servers"
+          echo ""
+          
+          # Build locally - this runs on GitHub Actions runner, NOT Expo cloud
+          eas build --platform android --profile production --local --non-interactive
+          
+          # Find the APK
+          APK_PATH=$(find . -name "*.apk" -type f | head -1)
+          
+          if [ -n "$APK_PATH" ]; then
+            echo "✅ Build complete!"
+            echo "APK at: $APK_PATH"
+            mv "$APK_PATH" app-release.apk
+          else
+            echo "❌ APK not found"
+            ls -la
+            exit 1
+          fi
+
+      - name: 📊 Build Summary
+        run: |
+          echo "## ⚡ Local Build Complete!" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**No Expo queue wait!** Built directly on GitHub runner." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Version | v${{ steps.version.outputs.version }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Version Code | ${{ steps.version.outputs.version_code }} |" >> $GITHUB_STEP_SUMMARY
+          ls -lh app-release.apk >> $GITHUB_STEP_SUMMARY || true
+
+      - name: 🏷️ Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          name: Release v${{ steps.version.outputs.version }}
+          body: |
+            ## Vybe v${{ steps.version.outputs.version }}
+            
+            **Version Code:** ${{ steps.version.outputs.version_code }}
+            **Built locally** on GitHub Actions (no Expo queue!)
+            
+            ### Download
+            Download the APK file below and install on your Android device.
+          files: app-release.apk
+          draft: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
