@@ -42,7 +42,7 @@ export default function TabLayout() {
         <View style={[styles.logoBox, { backgroundColor: accentColor }]}>
           <Text style={styles.logoText}>V</Text>
         </View>
-        <Text style={[styles.sidebarLogoText, { display: width < 1264 ? 'none' : 'flex' }]}>Vybe</Text>
+        <Text style={[styles.sidebarLogoText, { display: width < 1264 ? 'none' : 'flex' }]}>Vyb</Text>
       </TouchableOpacity>
 
       <View style={styles.sidebarMenu}>
@@ -95,7 +95,7 @@ export default function TabLayout() {
             <View style={[styles.logoBox, { backgroundColor: accentColor }]}>
               <Text style={styles.logoText}>V</Text>
             </View>
-            <Text style={styles.logoTitle}>Vybe</Text>
+            <Text style={styles.logoTitle}>Vyb</Text>
           </TouchableOpacity>
           <TouchableOpacity 
             onPress={handleModeSwitch}
@@ -104,7 +104,7 @@ export default function TabLayout() {
             {isDatingMode ? (
               <>
                 <Users size={14} color="black" />
-                <Text style={styles.modeTextBlack}>Vybe</Text>
+                <Text style={styles.modeTextBlack}>Vyb</Text>
               </>
             ) : (
               <>

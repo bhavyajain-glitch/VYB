@@ -9,8 +9,10 @@ import { authAPI } from '../services/api';
 import CommentModal from '../../components/CommentModal';
 import PostOptionsModal from '../../components/PostOptionsModal';
 import StoryViewer from '../../components/StoryViewer';
+import PostItem from '../../components/PostItem';
 import { getAvatarSource, getPostImageUrl } from '../../utils/imageUtils';
 import * as ImagePicker from 'expo-image-picker';
+import { pickImageWebCustom, processWebImage } from '../../utils/imagePickerWeb';
 
 const LIME = '#D4FF00';
 const { width } = Dimensions.get('window');
@@ -80,147 +82,7 @@ const StoryItem = ({ item, index, onPress, onAddStory, currentUserAvatar }: any)
 
 // Post Item Component
 // Post Item Component
-const PostItem = ({ item, onComment, onOptions, currentUserId }: any) => {
-  const router = useRouter();
-  
-  // Helper function to check if user liked the post (handles ObjectId vs string comparison)
-  const checkIfLiked = (likes: any[], userId: string | null): boolean => {
-    if (!likes || !userId) return false;
-    return likes.some(id => id?.toString() === userId?.toString());
-  };
-  
-  const [isLiked, setIsLiked] = useState<boolean>(checkIfLiked(item.likes, currentUserId));
-  const [likesCount, setLikesCount] = useState(item.likes?.length || 0);
-  const likeAnimation = useSharedValue(0);
-  const doubleTapRef = useRef(null);
-
-  const [isFollowing, setIsFollowing] = useState(false);
-
-  useEffect(() => {
-    if (currentUserId) {
-      setIsLiked(checkIfLiked(item.likes, currentUserId));
-      setLikesCount(item.likes?.length || 0);
-    }
-    if (item.user?.followers && currentUserId) {
-      setIsFollowing(checkIfLiked(item.user.followers, currentUserId));
-    }
-  }, [item.likes, item.user, currentUserId]);
-
-  const handleFollow = () => {
-    setIsFollowing(true);
-    authAPI.followUser(item.user._id).catch(() => setIsFollowing(false));
-  };
-
-  const handleLike = () => {
-    const newStatus = !isLiked;
-    setIsLiked(newStatus);
-    setLikesCount((prev: number) => newStatus ? prev + 1 : prev - 1);
-    // API Call
-    authAPI.toggleLike(item._id).catch(err => {
-        setIsLiked(!newStatus);
-        setLikesCount((prev: number) => !newStatus ? prev + 1 : prev - 1);
-    });
-  };
-
-  const onDoubleTap = useCallback(() => {
-    likeAnimation.value = 0; // Reset
-    likeAnimation.value = withTiming(1, { duration: 1250, easing: Easing.linear });
-
-    // Toggle like on double tap - like if not liked, unlike if already liked
-    handleLike();
-  }, [isLiked, likeAnimation]);
-
-  const rStyle = useAnimatedStyle(() => {
-    const scale = interpolate(
-        likeAnimation.value,
-        [0, 0.25, 0.6, 1],
-        [0.3, 1.2, 1, 1],
-        Extrapolation.CLAMP
-    );
-
-    const opacity = interpolate(
-        likeAnimation.value,
-        [0, 0.25, 0.6, 1],
-        [0, 1, 1, 0],
-        Extrapolation.CLAMP
-    );
-
-    return {
-      transform: [{ scale }],
-      opacity
-    };
-  });
-
-  return (
-    <Animated.View entering={FadeInDown.delay(100).duration(500)} style={styles.post}>
-      {/* Header */}
-      <View style={styles.postHeader}>
-        <View style={styles.authorContainer}>
-          <TouchableOpacity onPress={() => router.push(`/user/${item.user?._id}`)}>
-             <Image source={getAvatarSource(item.user?.profileImage)} style={styles.authorAvatar} />
-          </TouchableOpacity>
-          <View>
-            <View style={styles.authorNameRow}>
-              <TouchableOpacity onPress={() => router.push(`/user/${item.user?._id}`)}>
-                <Text style={styles.authorUsername}>{item.user?.username || 'User'}</Text>
-              </TouchableOpacity>
-              {item.user?.isVerified && <View style={styles.verifiedBadge}><Text style={styles.verifiedCheck}>✓</Text></View>}
-              
-              {!isFollowing && currentUserId && item.user?._id !== currentUserId && (
-                <TouchableOpacity onPress={handleFollow}>
-                    <Text style={{ color: '#0095F6', fontSize: 14, fontWeight: 'bold', marginLeft: 8 }}>• Follow</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-            <Text style={styles.location}>{item.user?.college || 'CampusConnect'}</Text>
-          </View>
-        </View>
-        <TouchableOpacity style={styles.moreButton} onPress={() => onOptions(item)}>
-            <MoreHorizontal size={20} color="#111827" />
-        </TouchableOpacity>
-      </View>
-
-      {/* Image with Double Tap */}
-      <TapGestureHandler
-        waitFor={doubleTapRef}
-        onActivated={onDoubleTap}
-        numberOfTaps={2}
-      >
-        <Animated.View style={styles.imageWrapper}>
-           <Image source={{ uri: getPostImageUrl(item.image) }} style={styles.postImage} resizeMode="cover" />
-           <Animated.View style={[styles.heartOverlay, rStyle]}>
-              <Heart size={90} color="#FF3040" fill="#FF3040" />
-           </Animated.View>
-        </Animated.View>
-      </TapGestureHandler>
-
-      {/* Actions */}
-      <View style={styles.postActions}>
-        <View style={styles.actionsLeft}>
-          <TouchableOpacity onPress={handleLike} style={styles.actionButton}>
-            <Heart size={26} color={isLiked ? '#FF3040' : 'black'} fill={isLiked ? '#FF3040' : 'transparent'} />
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => onComment(item._id)} style={styles.actionButton}>
-            <MessageCircle size={26} color="black" />
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      {/* Likes & Caption */}
-      <View style={styles.postFooter}>
-        <Text style={styles.likesText}>{likesCount} likes</Text>
-        <Text style={styles.caption}>
-          <Text style={styles.captionUsername}>{item.user?.username} </Text>
-          {item.caption}
-        </Text>
-        
-        <TouchableOpacity onPress={() => onComment(item._id)} activeOpacity={0.7} style={{ paddingVertical: 4 }}>
-             <Text style={styles.addComment}>Add a comment...</Text>
-        </TouchableOpacity>
-      </View>
-    </Animated.View>
-  );
-};
+// Post Item Component Removed (Imported)
 
 
 const RightSidebar = () => (
@@ -330,44 +192,61 @@ export default function FeedScreen() {
 
   const handleAddStory = async () => {
     try {
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        aspect: [9, 16],
-        quality: 0.8,
-        base64: true
-      });
+      let imageData: string | null = null;
 
-      if (!result.canceled && result.assets[0]) {
-        setUploadingStory(true);
-        let imageData = result.assets[0].uri;
-        
-        // Ensure base64 for web
-        if (result.assets[0].base64) {
-          imageData = `data:image/jpeg;base64,${result.assets[0].base64}`;
-        } else if (Platform.OS === 'web') {
-           // Convert blob URL to base64 manually
-           const response = await fetch(result.assets[0].uri);
-           const blob = await response.blob();
-           const base64 = await new Promise((resolve) => {
-             const reader = new FileReader();
-             reader.onloadend = () => resolve(reader.result);
-             reader.readAsDataURL(blob);
-           });
-           imageData = base64 as string;
-        }
+      if (Platform.OS === 'web') {
+         // Web: Use Custom Picker + Processor
+         const uri = await pickImageWebCustom();
+         if (uri) {
+             imageData = await processWebImage(uri);
+         }
+      } else {
+         // Native: Use Expo Image Picker
+         const result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            allowsEditing: true, // Native only
+            aspect: [9, 16],
+            quality: 0.8,
+            base64: true
+         });
 
-        await authAPI.createStory(imageData);
-        Alert.alert('Success', 'Story added! It will be visible for 24 hours.');
-        fetchStories();
+         if (!result.canceled && result.assets[0]) {
+             if (result.assets[0].base64) {
+                 imageData = `data:image/jpeg;base64,${result.assets[0].base64}`;
+             } else {
+                 imageData = result.assets[0].uri;
+             }
+         }
       }
-    } catch (error: any) {
-      console.error('Error creating story:', error);
-      Alert.alert('Error', error.message || 'Failed to create story');
-    } finally {
-      setUploadingStory(false);
+
+      if (imageData) {
+        setUploadingStory(true);
+        // rest of the upload logic handles imageData...
+        
+        try {
+           // Direct usage of imageData (it is now base64 or valid URI)
+           // Logic from original file continues here but we need to verify where imageData is used
+           // Original code:
+           // setUploadingStory(true);
+           // ... logic ...
+           // const res = await authAPI.createStory(imageData);
+
+           const res = await authAPI.createStory(imageData);
+           setUploadingStory(false);
+           Alert.alert('Success', 'Story added!');
+           fetchStories();
+        } catch (error) {
+           console.error('Story upload failed:', error);
+           Alert.alert('Error', 'Failed to upload story');
+           setUploadingStory(false);
+        }
+      }
+    } catch (error) {
+       console.error('Pick image error:', error);
+       Alert.alert('Error', 'Failed to pick image');
     }
   };
+
 
   const openStoryViewer = (index: number) => {
     setSelectedStoryIndex(index);
@@ -546,7 +425,38 @@ export default function FeedScreen() {
         visible={storyViewerVisible}
         storyGroups={storyGroups}
         initialGroupIndex={selectedStoryIndex}
-        onClose={() => setStoryViewerVisible(false)}
+        onClose={async (action, payload) => {
+            if (action === 'delete' && payload) {
+                // Confirm delete
+                if (Platform.OS === 'web') {
+                    if (confirm('Are you sure you want to delete this story?')) {
+                        try {
+                            await authAPI.archiveStory(payload);
+                            setStoryViewerVisible(false);
+                            fetchStories(); // Refresh stories
+                        } catch (error) {
+                            console.error(error);
+                            alert('Failed to delete story');
+                        }
+                    }
+                } else {
+                    Alert.alert('Delete Story', 'Are you sure?', [
+                        { text: 'Cancel', style: 'cancel' },
+                        { text: 'Delete', style: 'destructive', onPress: async () => {
+                            try {
+                                await authAPI.archiveStory(payload);
+                                setStoryViewerVisible(false);
+                                fetchStories();
+                            } catch (error) {
+                                Alert.alert('Error', 'Failed to delete story');
+                            }
+                        }}
+                    ]);
+                }
+            } else {
+                setStoryViewerVisible(false);
+            }
+        }}
       />
 
       {/* Post Options Modal */}
@@ -555,6 +465,17 @@ export default function FeedScreen() {
         onClose={() => setOptionsModalVisible(false)}
         post={selectedPostOptions}
         onBlockUser={handleBlockUser}
+        currentUserId={currentUserId}
+        onDeletePost={async (postId) => {
+            try {
+                await authAPI.deletePost(postId);
+                setPosts(prev => prev.filter(p => p._id !== postId));
+                Alert.alert('Success', 'Post deleted successfully');
+            } catch (error) {
+                console.error(error);
+                Alert.alert('Error', 'Failed to delete post');
+            }
+        }}
       />
     </View>
   );

@@ -1,7 +1,7 @@
 import { Platform, Alert } from 'react-native';
 
 // ======= TOGGLE THIS FOR LOCAL TESTING =======
-export const USE_LOCAL_API = false; // Set to true for local testing, false for production
+export const USE_LOCAL_API = true; // Set to true for local testing, false for production
 // ==============================================
 
 // API URLs
@@ -99,6 +99,7 @@ export const authAPI = {
   addComment: (postId: string, text: string) => request(`/posts/${postId}/comment`, 'POST', { text }),
   toggleLike: (postId: string) => request(`/posts/${postId}/like`, 'PUT'),
   getPost: (id: string) => request(`/posts/${id}`, 'GET'), // Need this too
+  deletePost: (id: string) => request(`/posts/${id}`, 'DELETE'),
   
   // User Utils
   checkUsername: (username: string) => request('/users/check-username', 'POST', { username }),

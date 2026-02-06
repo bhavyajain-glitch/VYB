@@ -1,6 +1,6 @@
 import { View, Text, Image, TouchableOpacity, StyleSheet, Dimensions, Modal, StatusBar, Platform } from 'react-native';
 import { useState, useEffect, useRef } from 'react';
-import { X, ChevronLeft, ChevronRight } from 'lucide-react-native';
+import { X, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react-native';
 import Animated, { useSharedValue, useAnimatedStyle, withTiming, runOnJS } from 'react-native-reanimated';
 import { authAPI } from '../app/services/api';
 import { getAvatarUrl } from '../utils/imageUtils';
@@ -31,7 +31,7 @@ interface StoryViewerProps {
   visible: boolean;
   storyGroups: StoryGroup[];
   initialGroupIndex: number;
-  onClose: () => void;
+  onClose: (action?: 'close' | 'delete', payload?: string) => void;
 }
 
 export default function StoryViewer({ visible, storyGroups, initialGroupIndex, onClose }: StoryViewerProps) {
@@ -150,9 +150,16 @@ export default function StoryViewer({ visible, storyGroups, initialGroupIndex, o
                 <Text style={styles.timestamp}>{timeAgo}</Text>
               </View>
             </View>
-            <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-              <X size={28} color="white" />
-            </TouchableOpacity>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
+                {currentGroup.isOwnStory && (
+                    <TouchableOpacity onPress={() => onClose && onClose('delete', currentStory._id)}>
+                        <Trash2 size={24} color="white" />
+                    </TouchableOpacity>
+                )}
+                <TouchableOpacity onPress={() => onClose && onClose('close')} style={styles.closeButton}>
+                    <X size={28} color="white" />
+                </TouchableOpacity>
+            </View>
           </View>
 
           {/* Tap Zones */}

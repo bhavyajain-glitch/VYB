@@ -3,6 +3,7 @@ import { useRouter } from 'expo-router';
 import { useState, useEffect } from 'react';
 import { ArrowLeft, Camera, Check, User, AtSign, GraduationCap, BookOpen, FileText, Hash } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
+import { pickImageWebCustom, processWebImage } from '../utils/imagePickerWeb';
 import { authAPI } from './services/api';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getAvatarSource } from '../utils/imageUtils';
@@ -88,9 +89,23 @@ export default function EditProfileScreen() {
   };
 
   const pickImage = async () => {
+    if ((Platform.OS as string) === 'web') {
+        try {
+            const uri = await pickImageWebCustom();
+            if (uri) {
+                const processed = await processWebImage(uri);
+                setAvatar(processed);
+            }
+        } catch (e) {
+            console.error("Web custom picker failed", e);
+            Alert.alert('Error', 'Failed to pick image');
+        }
+        return;
+    }
+
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
+      allowsEditing: (Platform.OS as string) !== 'web',
       aspect: [1, 1],
       quality: 0.7,
       base64: true

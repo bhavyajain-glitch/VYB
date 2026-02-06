@@ -16,6 +16,7 @@ const isWeb = Platform.OS === 'web';
 const MAX_WIDTH = 600;
 
 interface UserData {
+  _id: string;
   username?: string;
   fullName?: string;
   bio?: string;
@@ -27,12 +28,24 @@ interface UserData {
 }
 
 
+import PostViewerModal from '../../components/PostViewerModal';
+import CommentModal from '../../components/CommentModal';
+import PostOptionsModal from '../../components/PostOptionsModal';
+
 export default function ProfileScreen() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<'posts'>('posts');
   const [user, setUser] = useState<UserData | null>(null);
   const [userPosts, setUserPosts] = useState<any[]>([]);
   const [refreshing, setRefreshing] = useState(false);
+  const [postViewerVisible, setPostViewerVisible] = useState(false);
+  const [selectedPostIndex, setSelectedPostIndex] = useState(0);
+
+  // Modals for interaction
+  const [commentModalVisible, setCommentModalVisible] = useState(false);
+  const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
+  const [optionsModalVisible, setOptionsModalVisible] = useState(false);
+  const [selectedPostOptions, setSelectedPostOptions] = useState<any>(null);
 
   useEffect(() => {
     loadCachedProfile();
@@ -98,6 +111,26 @@ export default function ProfileScreen() {
         ]
       );
     }
+  };
+
+  const openPost = (index: number) => {
+      setSelectedPostIndex(index);
+      setPostViewerVisible(true);
+  };
+
+  const openComments = (postId: string) => {
+      setSelectedPostId(postId);
+      setCommentModalVisible(true);
+  };
+
+  const openOptions = (post: any) => {
+    setSelectedPostOptions(post);
+    setOptionsModalVisible(true);
+  };
+
+  const handleBlockUser = (userId: string) => {
+      // Refresh profile if user blocks someone (though unlikely to block self, kept for consistency)
+      fetchProfile();
   };
 
   return (
@@ -166,9 +199,8 @@ export default function ProfileScreen() {
               ) : (
                 userPosts.map((post, index) => (
                   <Animated.View key={post._id} entering={FadeIn.delay(index * 100)} style={styles.postItem}>
-                    <TouchableOpacity>
+                    <TouchableOpacity onPress={() => openPost(index)}>
                       <Image source={{ uri: getPostImageUrl(post.image) }} style={styles.postImage} />
-                      {/* <View style={styles.postLikes}><Heart size={12} color="white" fill="white" /><Text style={styles.postLikesText}>{post.likes.length}</Text></View> */}
                     </TouchableOpacity>
                   </Animated.View>
                 ))
@@ -178,6 +210,44 @@ export default function ProfileScreen() {
           <View style={styles.bottomPadding} />
         </ScrollView>
       </View>
+
+      {/* Full Post Viewer */}
+      <PostViewerModal 
+        visible={postViewerVisible} 
+        posts={userPosts}
+        initialIndex={selectedPostIndex}
+        onClose={() => setPostViewerVisible(false)} 
+        onComment={openComments}
+        onOptions={openOptions}
+        currentUserId={user?._id || null}
+      />
+
+      {/* Comment Modal Overlay */}
+      <CommentModal 
+        visible={commentModalVisible} 
+        onClose={() => setCommentModalVisible(false)} 
+        postId={selectedPostId} 
+      />
+
+      {/* Post Options Modal */}
+      <PostOptionsModal 
+        visible={optionsModalVisible}
+        onClose={() => setOptionsModalVisible(false)}
+        post={selectedPostOptions}
+        onBlockUser={handleBlockUser}
+        currentUserId={user?._id || null}
+        onDeletePost={async (postId) => {
+            try {
+                await authAPI.deletePost(postId);
+                setUserPosts(prev => prev.filter(p => p._id !== postId));
+                setPostViewerVisible(false); // Close viewer if deleted
+                Alert.alert('Success', 'Post deleted successfully');
+            } catch (error) {
+                console.error(error);
+                Alert.alert('Error', 'Failed to delete post');
+            }
+        }}
+      />
     </View>
   );
 }

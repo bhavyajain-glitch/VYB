@@ -1,44 +1,16 @@
 import { View, Text, TextInput, TouchableOpacity, Image, StyleSheet, Dimensions, Alert, ActivityIndicator, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Camera, X, Check } from 'lucide-react-native';
+import { Camera, X, Check, FileText } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { authAPI } from './services/api';
 
 const LIME = '#D4FF00';
 const { width } = Dimensions.get('window');
 
-// Enhanced Web Image Compressor (Resize + Compress)
-const processImageWeb = async (uri: string) => {
-  if (Platform.OS !== 'web') return uri; // Fallback for native (ImagePicker handles it)
-  
-  return new Promise((resolve, reject) => {
-    const img = new (window as any).Image();
-    img.src = uri;
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
-      const MAX_WIDTH = 1024; // Safe max width
-      const scale = MAX_WIDTH / img.width;
-      
-      // Only resize if too big
-      if (scale < 1) {
-        canvas.width = MAX_WIDTH;
-        canvas.height = img.height * scale;
-      } else {
-        canvas.width = img.width;
-        canvas.height = img.height;
-      }
 
-      const ctx = canvas.getContext('2d');
-      ctx?.drawImage(img, 0, 0, canvas.width, canvas.height);
-      
-      // Compress to JPEG 0.5
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.5);
-      resolve(dataUrl);
-    };
-    img.onerror = (e: any) => reject(e);
-  });
-};
+
+import { pickImageWebCustom, processWebImage } from '../utils/imagePickerWeb';
 
 export default function CreatePostScreen() {
   const router = useRouter();
@@ -47,37 +19,42 @@ export default function CreatePostScreen() {
   const [isLoading, setIsLoading] = useState(false);
 
   const pickImage = async () => {
+    if (Platform.OS === 'web') {
+        try {
+            const uri = await pickImageWebCustom();
+            if (uri) {
+                const processed = await processWebImage(uri);
+                setImage(processed);
+            }
+        } catch (e) {
+            console.error("Web custom picker failed", e);
+            Alert.alert('Error', 'Failed to select image.');
+        }
+        return;
+    }
+
+    // Native Logic
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [4, 5],
-      quality: 0.5, // Native quality
-      base64: true, 
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [4, 5],
+        quality: 0.5,
+        base64: true, 
     });
 
     if (!result.canceled) {
-      if (Platform.OS === 'web') {
-        try {
-          const processed = await processImageWeb(result.assets[0].uri);
-          setImage(processed as string);
-        } catch (e) {
-          console.error("Web image processing failed", e);
-          setImage(result.assets[0].uri);
-        }
-      } else {
         if (result.assets[0].base64) {
           setImage(`data:image/jpeg;base64,${result.assets[0].base64}`);
         } else {
           setImage(result.assets[0].uri);
         }
-      }
     }
   };
 
   const takePhoto = async () => {
     const result = await ImagePicker.launchCameraAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
+      allowsEditing: Platform.OS !== 'web',
       aspect: [4, 5],
       quality: 0.5,
       base64: true,
@@ -86,7 +63,7 @@ export default function CreatePostScreen() {
     if (!result.canceled) {
       if (Platform.OS === 'web') {
         try {
-          const processed = await processImageWeb(result.assets[0].uri);
+          const processed = await processWebImage(result.assets[0].uri);
           setImage(processed as string);
         } catch (e) {
           setImage(result.assets[0].uri);
@@ -168,7 +145,15 @@ export default function CreatePostScreen() {
         {/* Image Picker */}
         <TouchableOpacity onPress={requestSource} style={styles.imageContainer} activeOpacity={0.9}>
           {image ? (
-            <Image source={{ uri: image }} style={styles.previewImage} resizeMode="cover" />
+            image.startsWith('data:image/heic') || image.startsWith('data:image/heif') ? (
+                <View style={[styles.previewImage, { alignItems: 'center', justifyContent: 'center', backgroundColor: '#F3F4F6' }]}>
+                    <FileText size={48} color="#6B7280" />
+                    <Text style={{ marginTop: 12, color: '#6B7280', fontWeight: '500' }}>HEIC Preview Unavailable</Text>
+                    <Text style={{ color: '#9CA3AF', fontSize: 12 }}>Image will appear after upload</Text>
+                </View>
+            ) : (
+                <Image source={{ uri: image }} style={styles.previewImage} resizeMode="cover" />
+            )
           ) : (
             <View style={styles.placeholder}>
               <Camera size={48} color="#9CA3AF" />
