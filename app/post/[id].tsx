@@ -29,7 +29,7 @@ export default function PostDetailScreen() {
       // Actually, let's assume I can't fetch single post comfortably yet without adding it. 
       // I'll add `getPostById` to backend in next step for robustness. 
       // For now, I'll simulate it by fetching all (inefficient) or better, I'll implementing `getPostById`.
-      
+
       const res = await authAPI.getPost(id as string);
       setPost(res.data);
       setComments(res.data.comments || []);
@@ -55,15 +55,23 @@ export default function PostDetailScreen() {
     }
   };
 
+  const goBack = () => {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace('/');
+    }
+  };
+
   if (loading) return <View style={styles.centered}><ActivityIndicator color={LIME} size="large" /></View>;
   if (!post) return <View style={styles.centered}><Text>Post not found</Text></View>;
 
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.container}>
       <Stack.Screen options={{ headerShown: false }} />
-      
+
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}><ArrowLeft size={24} color="black" /></TouchableOpacity>
+        <TouchableOpacity onPress={goBack}><ArrowLeft size={24} color="black" /></TouchableOpacity>
         <Text style={styles.headerTitle}>Post Details</Text>
         <View style={{ width: 24 }} />
       </View>
@@ -71,44 +79,44 @@ export default function PostDetailScreen() {
       <ScrollView contentContainerStyle={styles.scrollContent}>
         {/* Post Content */}
         <View style={styles.postCard}>
-            <View style={styles.userRow}>
-                <Image source={{ uri: post.user?.profileImage || 'https://i.pravatar.cc/150' }} style={styles.avatar} />
-                <Text style={styles.username}>{post.user?.username}</Text>
-            </View>
-            <Image source={{ uri: post.image }} style={styles.postImage} resizeMode="cover" />
-            <View style={styles.actions}>
-                <Heart size={24} color="black" />
-                <MessageCircle size={24} color="black" />
-            </View>
-            <Text style={styles.likes}>{post.likes?.length || 0} likes</Text>
-            <Text style={styles.caption}><Text style={styles.bold}>{post.user?.username}</Text> {post.caption}</Text>
-            <Text style={styles.date}>{new Date(post.createdAt).toLocaleDateString()}</Text>
+          <View style={styles.userRow}>
+            <Image source={{ uri: post.user?.profileImage || 'https://i.pravatar.cc/150' }} style={styles.avatar} />
+            <Text style={styles.username}>{post.user?.username}</Text>
+          </View>
+          <Image source={{ uri: post.image }} style={styles.postImage} resizeMode="cover" />
+          <View style={styles.actions}>
+            <Heart size={24} color="black" />
+            <MessageCircle size={24} color="black" />
+          </View>
+          <Text style={styles.likes}>{post.likes?.length || 0} likes</Text>
+          <Text style={styles.caption}><Text style={styles.bold}>{post.user?.username}</Text> {post.caption}</Text>
+          <Text style={styles.date}>{new Date(post.createdAt).toLocaleDateString()}</Text>
         </View>
 
         {/* Comments Section */}
         <Text style={styles.commentsHeader}>Comments ({comments.length})</Text>
         <View style={styles.commentsList}>
-            {comments.map((c, i) => (
-                <View key={i} style={styles.commentItem}>
-                    <Text style={styles.commentText}>
-                        <Text style={styles.bold}>{c.user?.username || 'User'} </Text>
-                        {c.text}
-                    </Text>
-                </View>
-            ))}
+          {comments.map((c, i) => (
+            <View key={i} style={styles.commentItem}>
+              <Text style={styles.commentText}>
+                <Text style={styles.bold}>{c.user?.username || 'User'} </Text>
+                {c.text}
+              </Text>
+            </View>
+          ))}
         </View>
       </ScrollView>
 
       {/* Input */}
       <View style={styles.inputContainer}>
-        <TextInput 
-            value={newComment}
-            onChangeText={setNewComment}
-            placeholder="Add a comment..."
-            style={styles.input}
+        <TextInput
+          value={newComment}
+          onChangeText={setNewComment}
+          placeholder="Add a comment..."
+          style={styles.input}
         />
         <TouchableOpacity onPress={handleSend} disabled={sending}>
-            {sending ? <ActivityIndicator size="small" color={LIME} /> : <Send size={24} color={LIME} />}
+          {sending ? <ActivityIndicator size="small" color={LIME} /> : <Send size={24} color={LIME} />}
         </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>
@@ -120,9 +128,9 @@ const styles = StyleSheet.create({
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, paddingTop: 50, borderBottomWidth: 1, borderColor: '#F3F4F6' },
   headerTitle: { fontSize: 18, fontWeight: 'bold' },
-  
+
   scrollContent: { paddingBottom: 80 },
-  
+
   postCard: { padding: 16, borderBottomWidth: 1, borderColor: '#F3F4F6' },
   userRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12, gap: 10 },
   avatar: { width: 32, height: 32, borderRadius: 16 },
@@ -133,12 +141,12 @@ const styles = StyleSheet.create({
   caption: { lineHeight: 20 },
   bold: { fontWeight: 'bold' },
   date: { color: '#9CA3AF', fontSize: 12, marginTop: 8 },
-  
+
   commentsHeader: { fontSize: 16, fontWeight: 'bold', padding: 16, paddingBottom: 8 },
   commentsList: { paddingHorizontal: 16 },
   commentItem: { marginBottom: 12 },
   commentText: { lineHeight: 20 },
-  
+
   inputContainer: { flexDirection: 'row', alignItems: 'center', padding: 16, borderTopWidth: 1, borderColor: '#F3F4F6', backgroundColor: 'white' },
   input: { flex: 1, marginRight: 12, paddingVertical: 8, paddingHorizontal: 16, backgroundColor: '#F9FAFB', borderRadius: 20 },
 });

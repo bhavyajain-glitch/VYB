@@ -3,7 +3,7 @@ import { Heart, Sparkles, Coins, User, X, Calendar, MessageCircle, Send } from '
 import { useState, useEffect } from 'react';
 import Animated, { FadeIn, SlideInUp } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
-import { authAPI } from '../services/api'; 
+import { authAPI } from '../services/api';
 import { useRouter } from 'expo-router';
 import { getAvatarSource } from '../../utils/imageUtils';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -36,7 +36,7 @@ export default function DatingScreen() {
   const [selectedProfile, setSelectedProfile] = useState<Match | null>(null);
   const [showShop, setShowShop] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  
+
   // Dating Setup State
   const [isLoading, setIsLoading] = useState(true);
   const [showTermsModal, setShowTermsModal] = useState(false);
@@ -53,7 +53,7 @@ export default function DatingScreen() {
       const res = await authAPI.getDatingProfile();
       if (res.data) {
         const { datingTermsAccepted, datingProfileComplete: profileComplete } = res.data;
-        
+
         if (!datingTermsAccepted) {
           // First time user - show terms
           setShowTermsModal(true);
@@ -91,7 +91,15 @@ export default function DatingScreen() {
 
   const handleDeclineTerms = () => {
     setShowTermsModal(false);
-    router.back();
+    goBack();
+  };
+
+  const goBack = () => {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace('/'); // Go back to feed
+    }
   };
 
   const fetchUserData = async () => {
@@ -165,7 +173,7 @@ export default function DatingScreen() {
   return (
     <View style={styles.container}>
       {/* Dating Terms Modal */}
-      <DatingTermsModal 
+      <DatingTermsModal
         visible={showTermsModal}
         onAccept={handleAcceptTerms}
         onDecline={handleDeclineTerms}
@@ -189,9 +197,9 @@ export default function DatingScreen() {
         {/* Tabs */}
         <View style={styles.tabsContainer}>
           {['vibe', 'chat', 'discover'].map((tab) => (
-            <TouchableOpacity 
-              key={tab} 
-              onPress={() => setActiveTab(tab as any)} 
+            <TouchableOpacity
+              key={tab}
+              onPress={() => setActiveTab(tab as any)}
               style={[styles.tab, activeTab === tab && styles.tabActive]}
             >
               {tab === 'discover' && <Sparkles size={12} color={activeTab === tab ? 'white' : '#6B7280'} />}
@@ -203,9 +211,9 @@ export default function DatingScreen() {
         </View>
 
         {/* Content */}
-        <ScrollView 
-          style={styles.content} 
-          contentContainerStyle={{ paddingBottom: 24 }} 
+        <ScrollView
+          style={styles.content}
+          contentContainerStyle={{ paddingBottom: 24 }}
           showsVerticalScrollIndicator={false}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         >
@@ -218,8 +226,8 @@ export default function DatingScreen() {
 
       {/* Profile Preview Modal */}
       {selectedProfile && (
-        <ProfilePreviewModal 
-          profile={selectedProfile} 
+        <ProfilePreviewModal
+          profile={selectedProfile}
           coins={coins}
           onClose={() => setSelectedProfile(null)}
           onSwitch={() => handleSwitchVibe(selectedProfile)}
@@ -228,10 +236,10 @@ export default function DatingScreen() {
 
       {/* Coin Shop Modal */}
       {showShop && (
-        <CoinShopModal 
-          coins={coins} 
-          onClose={() => setShowShop(false)} 
-          onBuy={handleBuyPacket} 
+        <CoinShopModal
+          coins={coins}
+          onClose={() => setShowShop(false)}
+          onBuy={handleBuyPacket}
         />
       )}
     </View>
@@ -276,11 +284,11 @@ const ChatTab = ({ currentMatch }: { currentMatch: Match | null }) => {
   }, [currentMatch]);
 
   const loadUser = async () => {
-     const userInfo = await require('@react-native-async-storage/async-storage').default.getItem('userInfo');
-     if (userInfo) {
-       const user = JSON.parse(userInfo);
-       setCurrentUserId(user.id || user._id);
-     }
+    const userInfo = await require('@react-native-async-storage/async-storage').default.getItem('userInfo');
+    if (userInfo) {
+      const user = JSON.parse(userInfo);
+      setCurrentUserId(user.id || user._id);
+    }
   };
 
   const fetchMessages = async () => {
@@ -299,7 +307,7 @@ const ChatTab = ({ currentMatch }: { currentMatch: Match | null }) => {
       setInputText('');
       fetchMessages();
     } catch (error) {
-       Alert.alert('Error', 'Failed to send message');
+      Alert.alert('Error', 'Failed to send message');
     }
   };
 
@@ -312,28 +320,28 @@ const ChatTab = ({ currentMatch }: { currentMatch: Match | null }) => {
           <Text style={styles.activeStatus}>Active now</Text>
         </View>
       </View>
-      
+
       <ScrollView style={styles.messagesScroll} contentContainerStyle={styles.messagesContainer}>
         {messages.map((msg, index) => {
-            const isMe = msg.sender === currentUserId;
-            return (
-                <View key={index} style={[styles.messageBubble, isMe ? styles.myMessage : styles.theirMessage]}>
-                    <Text style={[styles.messageText, isMe && { color: 'white' }]}>{msg.text}</Text>
-                </View>
-            );
+          const isMe = msg.sender === currentUserId;
+          return (
+            <View key={index} style={[styles.messageBubble, isMe ? styles.myMessage : styles.theirMessage]}>
+              <Text style={[styles.messageText, isMe && { color: 'white' }]}>{msg.text}</Text>
+            </View>
+          );
         })}
-        {messages.length === 0 && <Text style={{textAlign: 'center', color: '#9CA3AF', marginTop: 20}}>No messages yet. Say hi!</Text>}
+        {messages.length === 0 && <Text style={{ textAlign: 'center', color: '#9CA3AF', marginTop: 20 }}>No messages yet. Say hi!</Text>}
       </ScrollView>
 
       <View style={styles.inputContainer}>
-        <TextInput 
-            placeholder="Type a message..." 
-            style={styles.messageInput} 
-            value={inputText}
-            onChangeText={setInputText}
+        <TextInput
+          placeholder="Type a message..."
+          style={styles.messageInput}
+          value={inputText}
+          onChangeText={setInputText}
         />
         <TouchableOpacity style={styles.sendButton} onPress={handleSend}>
-            <Send size={18} color="black" />
+          <Send size={18} color="black" />
         </TouchableOpacity>
       </View>
     </View>
@@ -342,7 +350,7 @@ const ChatTab = ({ currentMatch }: { currentMatch: Match | null }) => {
 
 const DiscoverTab = ({ suggestions, onSelect }: { suggestions: Match[], onSelect: (m: Match) => void }) => {
   if (suggestions.length === 0) return <EmptyState icon={Sparkles} title="No profiles found" subtitle="Check back later for new people!" />;
-  
+
   return (
     <View style={styles.discoverContainer}>
       <Text style={styles.discoverHint}>Tap a profile to reveal details</Text>
@@ -350,7 +358,7 @@ const DiscoverTab = ({ suggestions, onSelect }: { suggestions: Match[], onSelect
         {suggestions.map(s => (
           <TouchableOpacity key={s._id} onPress={() => onSelect(s)} style={styles.profileCard}>
             {/* Blurring Logic: In real app, use blurRadius on Image, or overlays */}
-             <Image source={getAvatarSource(s.profileImage)} style={styles.profileCardImage} blurRadius={Platform.OS === 'web' ? 10 : 25} />
+            <Image source={getAvatarSource(s.profileImage)} style={styles.profileCardImage} blurRadius={Platform.OS === 'web' ? 10 : 25} />
             <LinearGradient colors={['rgba(0,0,0,0.2)', 'rgba(0,0,0,0.8)']} style={StyleSheet.absoluteFillObject} />
             <View style={styles.sparkleIcon}><Sparkles size={12} color="white" /></View>
             <View style={styles.profileCardContent}>
@@ -388,7 +396,7 @@ const ProfilePreviewModal = ({ profile, coins, onClose, onSwitch }: any) => (
         </View>
         <View style={styles.modalSection}><Text style={styles.sectionTitle}>Interests</Text><View style={styles.badgesRow}>{profile.interests?.map((i: string) => <View key={i} style={styles.sectionBadge}><Text style={styles.sectionBadgeText}>{i}</Text></View>)}</View></View>
         <View style={styles.modalSection}><Text style={styles.sectionTitle}>Bio</Text><Text style={styles.aboutText}>{profile.bio || "No bio yet"}</Text></View>
-        
+
         <TouchableOpacity onPress={onSwitch} disabled={coins < 100} style={[styles.switchButton, coins < 100 && styles.switchButtonDisabled]}>
           <Text style={styles.switchButtonText}>Switch My Vibe (100 coins)</Text>
         </TouchableOpacity>
@@ -425,9 +433,9 @@ const CoinShopModal = ({ coins, onClose, onBuy }: any) => {
 
         <View style={styles.shopGrid}>
           {packages.map((pkg, index) => (
-            <TouchableOpacity 
-              key={index} 
-              onPress={() => onBuy(pkg.amount, pkg.price)} 
+            <TouchableOpacity
+              key={index}
+              onPress={() => onBuy(pkg.amount, pkg.price)}
               style={[styles.shopCard, pkg.popular && styles.shopCardPopular]}
             >
               {pkg.popular && (
@@ -464,7 +472,7 @@ const styles = StyleSheet.create({
   tabText: { fontSize: 13, fontWeight: '600', color: '#6B7280' },
   tabTextActive: { color: 'white' },
   content: { flex: 1, paddingHorizontal: 16 },
-  
+
   // Vibe Tab
   vibeContainer: { alignItems: 'center' },
   matchCard: { borderRadius: 20, overflow: 'hidden', width: '100%', aspectRatio: 0.8, position: 'relative' },
@@ -477,7 +485,7 @@ const styles = StyleSheet.create({
   matchBio: { color: 'white', fontSize: 13, marginBottom: 12 },
   viewProfileButton: { marginTop: 16, backgroundColor: LIME, width: '100%', paddingVertical: 14, borderRadius: 14, alignItems: 'center' },
   viewProfileText: { fontWeight: 'bold' },
-  
+
   // Chat Tab
   chatContainer: { flex: 1 },
   chatHeader: { flexDirection: 'row', gap: 12, paddingBottom: 16, borderBottomWidth: 1, borderColor: '#F3F4F6' },
@@ -506,7 +514,7 @@ const styles = StyleSheet.create({
   smallBadge: { backgroundColor: 'rgba(255,255,255,0.3)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
   smallBadgeText: { fontSize: 10, color: 'white' },
   profileInterests: { flexDirection: 'row', marginBottom: 6 },
-  
+
   // Shared
   interestsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 },
   interestBadge: { backgroundColor: 'rgba(255,255,255,0.2)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, marginRight: 6 },

@@ -17,7 +17,7 @@ export default function EditProfileScreen() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
-  
+
   // Form fields
   const [username, setUsername] = useState('');
   const [originalUsername, setOriginalUsername] = useState('');
@@ -28,7 +28,7 @@ export default function EditProfileScreen() {
   const [year, setYear] = useState('');
   const [avatar, setAvatar] = useState<string | null>(null);
   const [selectedInterests, setSelectedInterests] = useState<string[]>([]);
-  
+
   // Validation
   const [usernameAvailable, setUsernameAvailable] = useState<boolean | null>(true);
   const [checkingUsername, setCheckingUsername] = useState(false);
@@ -90,17 +90,17 @@ export default function EditProfileScreen() {
 
   const pickImage = async () => {
     if ((Platform.OS as string) === 'web') {
-        try {
-            const uri = await pickImageWebCustom();
-            if (uri) {
-                const processed = await processWebImage(uri);
-                setAvatar(processed);
-            }
-        } catch (e) {
-            console.error("Web custom picker failed", e);
-            Alert.alert('Error', 'Failed to pick image');
+      try {
+        const uri = await pickImageWebCustom();
+        if (uri) {
+          const processed = await processWebImage(uri);
+          setAvatar(processed);
         }
-        return;
+      } catch (e) {
+        console.error("Web custom picker failed", e);
+        Alert.alert('Error', 'Failed to pick image');
+      }
+      return;
     }
 
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -121,9 +121,9 @@ export default function EditProfileScreen() {
   };
 
   const toggleInterest = (interest: string) => {
-    setSelectedInterests(prev => 
-      prev.includes(interest) 
-        ? prev.filter(i => i !== interest) 
+    setSelectedInterests(prev =>
+      prev.includes(interest)
+        ? prev.filter(i => i !== interest)
         : [...prev, interest]
     );
   };
@@ -162,7 +162,7 @@ export default function EditProfileScreen() {
       };
 
       await authAPI.updateProfile(profileData);
-      
+
       // Update local cache
       const cached = await AsyncStorage.getItem('userInfo');
       if (cached) {
@@ -181,6 +181,14 @@ export default function EditProfileScreen() {
     }
   };
 
+  const goBack = () => {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace('/(tabs)/profile');
+    }
+  };
+
   if (isLoading) {
     return (
       <View style={[styles.container, styles.centered]}>
@@ -193,12 +201,12 @@ export default function EditProfileScreen() {
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+        <TouchableOpacity onPress={goBack} style={styles.backButton}>
           <ArrowLeft size={24} color="black" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Edit Profile</Text>
-        <TouchableOpacity 
-          onPress={handleSave} 
+        <TouchableOpacity
+          onPress={handleSave}
           style={[styles.saveButton, isSaving && styles.saveButtonDisabled]}
           disabled={isSaving}
         >
@@ -251,7 +259,7 @@ export default function EditProfileScreen() {
               <Text style={styles.labelText}>Username</Text>
               {checkingUsername && <ActivityIndicator size="small" color="#6B7280" style={{ marginLeft: 8 }} />}
               {!checkingUsername && username.length >= 3 && username !== originalUsername && (
-                usernameAvailable ? 
+                usernameAvailable ?
                   <Check size={16} color="green" style={{ marginLeft: 8 }} /> :
                   <Text style={{ color: 'red', marginLeft: 8, fontSize: 12 }}>Taken</Text>
               )}
@@ -321,9 +329,9 @@ export default function EditProfileScreen() {
             <Text style={styles.labelText}>Year</Text>
             <View style={styles.yearRow}>
               {['1st', '2nd', '3rd', '4th', 'Grad'].map(y => (
-                <TouchableOpacity 
-                  key={y} 
-                  onPress={() => setYear(y)} 
+                <TouchableOpacity
+                  key={y}
+                  onPress={() => setYear(y)}
                   style={[styles.yearButton, year === y && styles.yearActive]}
                 >
                   <Text style={[styles.yearText, year === y && styles.yearTextActive]}>{y}</Text>
@@ -338,9 +346,9 @@ export default function EditProfileScreen() {
           <Text style={styles.sectionTitle}>Interests</Text>
           <View style={styles.interestsGrid}>
             {interestsList.map(interest => (
-              <TouchableOpacity 
-                key={interest} 
-                onPress={() => toggleInterest(interest)} 
+              <TouchableOpacity
+                key={interest}
+                onPress={() => toggleInterest(interest)}
                 style={[styles.interestChip, selectedInterests.includes(interest) && styles.interestActive]}
               >
                 <Text style={[styles.interestText, selectedInterests.includes(interest) && styles.interestTextActive]}>
@@ -360,27 +368,27 @@ export default function EditProfileScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'white' },
   centered: { justifyContent: 'center', alignItems: 'center' },
-  
-  header: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
+
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16, 
-    paddingTop: Platform.OS === 'ios' ? 60 : 40, 
+    paddingHorizontal: 16,
+    paddingTop: Platform.OS === 'ios' ? 60 : 40,
     paddingBottom: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#F3F4F6'
   },
   backButton: { padding: 8 },
   headerTitle: { fontSize: 18, fontWeight: 'bold' },
-  saveButton: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    gap: 6, 
-    backgroundColor: LIME, 
-    paddingHorizontal: 16, 
-    paddingVertical: 8, 
-    borderRadius: 20 
+  saveButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: LIME,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20
   },
   saveButtonDisabled: { opacity: 0.6 },
   saveButtonText: { fontWeight: 'bold' },
@@ -390,15 +398,15 @@ const styles = StyleSheet.create({
   avatarSection: { alignItems: 'center', paddingVertical: 24 },
   avatarWrapper: { position: 'relative' },
   avatar: { width: 100, height: 100, borderRadius: 50 },
-  cameraOverlay: { 
-    position: 'absolute', 
-    bottom: 0, 
-    right: 0, 
-    backgroundColor: 'rgba(0,0,0,0.6)', 
-    width: 36, 
-    height: 36, 
-    borderRadius: 18, 
-    alignItems: 'center', 
+  cameraOverlay: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 2,
     borderColor: 'white'
@@ -412,12 +420,12 @@ const styles = StyleSheet.create({
   fieldLabel: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
   labelText: { fontSize: 14, color: '#6B7280', fontWeight: '500' },
 
-  input: { 
-    backgroundColor: '#F9FAFB', 
-    borderRadius: 12, 
-    borderWidth: 1, 
-    borderColor: '#E5E7EB', 
-    padding: 14, 
+  input: {
+    backgroundColor: '#F9FAFB',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    padding: 14,
     fontSize: 16,
     color: '#111827'
   },

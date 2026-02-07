@@ -20,34 +20,34 @@ export default function CreatePostScreen() {
 
   const pickImage = async () => {
     if (Platform.OS === 'web') {
-        try {
-            const uri = await pickImageWebCustom();
-            if (uri) {
-                const processed = await processWebImage(uri);
-                setImage(processed);
-            }
-        } catch (e) {
-            console.error("Web custom picker failed", e);
-            Alert.alert('Error', 'Failed to select image.');
+      try {
+        const uri = await pickImageWebCustom();
+        if (uri) {
+          const processed = await processWebImage(uri);
+          setImage(processed);
         }
-        return;
+      } catch (e) {
+        console.error("Web custom picker failed", e);
+        Alert.alert('Error', 'Failed to select image.');
+      }
+      return;
     }
 
     // Native Logic
     const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        aspect: [4, 5],
-        quality: 0.5,
-        base64: true, 
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [4, 5],
+      quality: 0.5,
+      base64: true,
     });
 
     if (!result.canceled) {
-        if (result.assets[0].base64) {
-          setImage(`data:image/jpeg;base64,${result.assets[0].base64}`);
-        } else {
-          setImage(result.assets[0].uri);
-        }
+      if (result.assets[0].base64) {
+        setImage(`data:image/jpeg;base64,${result.assets[0].base64}`);
+      } else {
+        setImage(result.assets[0].uri);
+      }
     }
   };
 
@@ -113,9 +113,9 @@ export default function CreatePostScreen() {
         image: imageUrl,
         caption
       });
-      
+
       Alert.alert('Success', 'Post shared successfully!');
-      router.replace('/'); 
+      router.replace('/');
     } catch (error: any) {
       console.error(error);
       Alert.alert('Error', error.message || 'Failed to share post.');
@@ -124,16 +124,24 @@ export default function CreatePostScreen() {
     }
   };
 
+  const goBack = () => {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace('/');
+    }
+  };
+
   return (
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.iconButton}>
+        <TouchableOpacity onPress={goBack} style={styles.iconButton}>
           <X size={24} color="black" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>New Post</Text>
-        <TouchableOpacity 
-          onPress={handlePost} 
+        <TouchableOpacity
+          onPress={handlePost}
           disabled={!image || isLoading}
           style={[styles.postButton, (!image || isLoading) && styles.disabledButton]}
         >
@@ -146,13 +154,13 @@ export default function CreatePostScreen() {
         <TouchableOpacity onPress={requestSource} style={styles.imageContainer} activeOpacity={0.9}>
           {image ? (
             image.startsWith('data:image/heic') || image.startsWith('data:image/heif') ? (
-                <View style={[styles.previewImage, { alignItems: 'center', justifyContent: 'center', backgroundColor: '#F3F4F6' }]}>
-                    <FileText size={48} color="#6B7280" />
-                    <Text style={{ marginTop: 12, color: '#6B7280', fontWeight: '500' }}>HEIC Preview Unavailable</Text>
-                    <Text style={{ color: '#9CA3AF', fontSize: 12 }}>Image will appear after upload</Text>
-                </View>
+              <View style={[styles.previewImage, { alignItems: 'center', justifyContent: 'center', backgroundColor: '#F3F4F6' }]}>
+                <FileText size={48} color="#6B7280" />
+                <Text style={{ marginTop: 12, color: '#6B7280', fontWeight: '500' }}>HEIC Preview Unavailable</Text>
+                <Text style={{ color: '#9CA3AF', fontSize: 12 }}>Image will appear after upload</Text>
+              </View>
             ) : (
-                <Image source={{ uri: image }} style={styles.previewImage} resizeMode="cover" />
+              <Image source={{ uri: image }} style={styles.previewImage} resizeMode="cover" />
             )
           ) : (
             <View style={styles.placeholder}>
@@ -180,28 +188,28 @@ export default function CreatePostScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'white' },
-  header: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    justifyContent: 'space-between', 
-    paddingHorizontal: 16, 
-    paddingTop: Platform.OS === 'web' ? 20 : 60, 
-    paddingBottom: 16, 
-    borderBottomWidth: 1, 
-    borderBottomColor: '#F3F4F6' 
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingTop: Platform.OS === 'web' ? 20 : 60,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6'
   },
   headerTitle: { fontSize: 18, fontWeight: 'bold' },
   iconButton: { padding: 8 },
   postButton: { backgroundColor: LIME, paddingHorizontal: 20, paddingVertical: 8, borderRadius: 20 },
   disabledButton: { backgroundColor: '#F3F4F6' },
   postButtonText: { fontWeight: 'bold', fontSize: 14 },
-  
+
   content: { flex: 1, maxWidth: 600, alignSelf: 'center', width: '100%' },
   imageContainer: { width: '100%', aspectRatio: 1, backgroundColor: '#F9FAFB', alignItems: 'center', justifyContent: 'center' },
   previewImage: { width: '100%', height: '100%' },
   placeholder: { alignItems: 'center', gap: 12 },
   placeholderText: { color: '#9CA3AF', fontSize: 16, fontWeight: '500' },
-  
+
   captionContainer: { padding: 20, flex: 1 },
   captionInput: { fontSize: 16, color: 'black', minHeight: 100, textAlignVertical: 'top' },
 });

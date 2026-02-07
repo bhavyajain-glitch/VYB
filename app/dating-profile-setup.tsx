@@ -24,7 +24,7 @@ const INTENTION_OPTIONS = [
 ];
 const HEIGHT_OPTIONS = Array.from({ length: 61 }, (_, i) => `${150 + i} cm`); // 150cm to 210cm
 const INTEREST_OPTIONS = [
-  'Music', 'Movies', 'Travel', 'Fitness', 'Gaming', 'Photography', 
+  'Music', 'Movies', 'Travel', 'Fitness', 'Gaming', 'Photography',
   'Art', 'Reading', 'Cooking', 'Dancing', 'Sports', 'Technology',
   'Fashion', 'Nature', 'Pets', 'Anime', 'Netflix', 'Coffee',
   'Food', 'Yoga', 'Hiking', 'Swimming', 'Cricket', 'Football'
@@ -34,7 +34,7 @@ export default function DatingProfileSetup() {
   const router = useRouter();
   const [step, setStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  
+
   // Form state
   const [gender, setGender] = useState('');
   const [lookingFor, setLookingFor] = useState('');
@@ -51,9 +51,9 @@ export default function DatingProfileSetup() {
   const totalSteps = 3;
 
   const toggleIntention = (intention: string) => {
-    setIntentions(prev => 
-      prev.includes(intention) 
-        ? prev.filter(i => i !== intention) 
+    setIntentions(prev =>
+      prev.includes(intention)
+        ? prev.filter(i => i !== intention)
         : [...prev, intention]
     );
   };
@@ -71,7 +71,7 @@ export default function DatingProfileSetup() {
       Alert.alert('Maximum Photos', 'You can upload up to 6 photos');
       return;
     }
-    
+
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
@@ -101,7 +101,7 @@ export default function DatingProfileSetup() {
 
   const handleSubmit = async () => {
     if (!canProceed()) return;
-    
+
     setIsSubmitting(true);
     try {
       const datingProfile = {
@@ -121,7 +121,7 @@ export default function DatingProfileSetup() {
 
       await authAPI.updateDatingProfile(datingProfile);
       await AsyncStorage.setItem('datingProfileComplete', 'true');
-      
+
       router.replace('/(tabs)/dating');
     } catch (error) {
       console.error('Error saving dating profile:', error);
@@ -140,7 +140,19 @@ export default function DatingProfileSetup() {
   };
 
   const prevStep = () => {
-    if (step > 1) setStep(step - 1);
+    if (step > 1) {
+      setStep(step - 1);
+    } else {
+      goBack();
+    }
+  };
+
+  const goBack = () => {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace('/(tabs)/dating');
+    }
   };
 
   return (
@@ -148,7 +160,7 @@ export default function DatingProfileSetup() {
       {/* Header */}
       <LinearGradient colors={[PINK, '#DB2777']} style={styles.header}>
         <View style={styles.headerContent}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+          <TouchableOpacity onPress={goBack} style={styles.backButton}>
             <ArrowLeft size={24} color="white" />
           </TouchableOpacity>
           <View>
@@ -157,7 +169,7 @@ export default function DatingProfileSetup() {
           </View>
           <View style={{ width: 40 }} />
         </View>
-        
+
         {/* Progress Bar */}
         <View style={styles.progressContainer}>
           {[1, 2, 3].map(s => (
@@ -167,8 +179,8 @@ export default function DatingProfileSetup() {
       </LinearGradient>
 
       {/* Content */}
-      <ScrollView 
-        style={styles.content} 
+      <ScrollView
+        style={styles.content}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
@@ -176,11 +188,11 @@ export default function DatingProfileSetup() {
         {step === 1 && (
           <Animated.View entering={FadeIn} style={styles.stepContainer}>
             <Text style={styles.stepTitle}>Let's start with the basics</Text>
-            
+
             <Text style={styles.label}>I am a...</Text>
             <View style={styles.optionsRow}>
               {GENDER_OPTIONS.map(option => (
-                <TouchableOpacity 
+                <TouchableOpacity
                   key={option}
                   style={[styles.optionButton, gender === option && styles.optionButtonActive]}
                   onPress={() => setGender(option)}
@@ -193,7 +205,7 @@ export default function DatingProfileSetup() {
             <Text style={styles.label}>Looking for...</Text>
             <View style={styles.optionsRow}>
               {LOOKING_FOR_OPTIONS.map(option => (
-                <TouchableOpacity 
+                <TouchableOpacity
                   key={option}
                   style={[styles.optionButton, lookingFor === option && styles.optionButtonActive]}
                   onPress={() => setLookingFor(option)}
@@ -218,7 +230,7 @@ export default function DatingProfileSetup() {
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.heightScroll}>
               <View style={styles.heightRow}>
                 {HEIGHT_OPTIONS.map(h => (
-                  <TouchableOpacity 
+                  <TouchableOpacity
                     key={h}
                     style={[styles.heightChip, height === h && styles.heightChipActive]}
                     onPress={() => setHeight(h)}
@@ -235,7 +247,7 @@ export default function DatingProfileSetup() {
         {step === 2 && (
           <Animated.View entering={FadeIn} style={styles.stepContainer}>
             <Text style={styles.stepTitle}>Tell us about yourself</Text>
-            
+
             <Text style={styles.label}>Hometown</Text>
             <TextInput
               style={styles.input}
@@ -266,7 +278,7 @@ export default function DatingProfileSetup() {
             <Text style={styles.label}>What are you looking for? (Select all that apply)</Text>
             <View style={styles.intentionsGrid}>
               {INTENTION_OPTIONS.map(option => (
-                <TouchableOpacity 
+                <TouchableOpacity
                   key={option.label}
                   style={[styles.intentionButton, intentions.includes(option.label) && styles.intentionButtonActive]}
                   onPress={() => toggleIntention(option.label)}
@@ -285,7 +297,7 @@ export default function DatingProfileSetup() {
         {step === 3 && (
           <Animated.View entering={FadeIn} style={styles.stepContainer}>
             <Text style={styles.stepTitle}>Show your personality</Text>
-            
+
             <Text style={styles.label}>Bio (min 20 characters)</Text>
             <TextInput
               style={[styles.input, styles.bioInput]}
@@ -301,7 +313,7 @@ export default function DatingProfileSetup() {
             <Text style={styles.label}>Interests (pick 3-6)</Text>
             <View style={styles.interestsGrid}>
               {INTEREST_OPTIONS.map(interest => (
-                <TouchableOpacity 
+                <TouchableOpacity
                   key={interest}
                   style={[styles.interestChip, interests.includes(interest) && styles.interestChipActive]}
                   onPress={() => toggleInterest(interest)}
@@ -342,7 +354,7 @@ export default function DatingProfileSetup() {
             <Text style={styles.prevButtonText}>Back</Text>
           </TouchableOpacity>
         )}
-        <TouchableOpacity 
+        <TouchableOpacity
           style={[styles.nextButton, !canProceed() && styles.nextButtonDisabled]}
           onPress={nextStep}
           disabled={!canProceed() || isSubmitting}
