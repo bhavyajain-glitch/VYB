@@ -1,13 +1,15 @@
 {
   "expo": {
-    "name": "CampusConnect",
+    "name": "Vyb",
     "slug": "campusconnect",
-    "version": "1.0.6",
+    "version": "1.0.9",
     "orientation": "portrait",
+    "icon": "./assets/vyb-logo-new.png",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
-      "backgroundColor": "#8B5CF6",
+      "image": "./assets/vyb-logo-new.png",
+      "backgroundColor": "#121212",
       "resizeMode": "contain"
     },
     "ios": {
@@ -16,7 +18,11 @@
     },
     "android": {
       "package": "com.campusconnect.app",
-      "versionCode": 6,
+      "versionCode": 11,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/vyb-logo-new.png",
+        "backgroundColor": "#121212"
+      },
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.RECORD_AUDIO"
@@ -31,14 +37,19 @@
       "themeColor": "#D4FF00",
       "backgroundColor": "#ffffff"
     },
+    "jsEngine": "hermes",
     "plugins": [
-      "expo-router",
       [
-        "expo-camera",
+        "expo-build-properties",
         {
-          "cameraPermission": "Allow CampusConnect to access your camera for stories and profile photos."
+          "android": {
+            "enableProguardInReleaseBuilds": true,
+            "enableShrinkResourcesInReleaseBuilds": true
+          }
         }
       ],
+      "expo-updates",
+      "expo-router",
       [
         "expo-image-picker",
         {
@@ -60,6 +71,9 @@
     "updates": {
       "url": "https://u.expo.dev/26f32825-e835-4da0-9347-e0b67cf71cb0",
       "fallbackToCacheTimeout": 0
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
     }
   }
 }

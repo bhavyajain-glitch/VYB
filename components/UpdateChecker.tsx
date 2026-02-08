@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
-import { View, Text, TouchableOpacity, Modal, StyleSheet, Linking, Platform, Alert } from 'react-native';
-import { Download, X, AlertTriangle, Sparkles } from 'lucide-react-native';
+import { useEffect, useState, useRef } from 'react';
+import { View, Text, TouchableOpacity, Modal, StyleSheet, Linking, Platform, Alert, AppState, AppStateStatus } from 'react-native';
+import { Download, X, AlertTriangle, Sparkles, RefreshCcw, Info } from 'lucide-react-native';
 import * as Application from 'expo-application';
+import * as Updates from 'expo-updates';
 import { LinearGradient } from 'expo-linear-gradient';
-import Animated, { FadeIn, SlideInUp } from 'react-native-reanimated';
+import Animated, { FadeIn, SlideInUp, useAnimatedStyle, useSharedValue, withRepeat, withTiming, Easing } from 'react-native-reanimated';
 
 const LIME = '#D4FF00';
 
@@ -11,41 +12,86 @@ const LIME = '#D4FF00';
 const API_URL = 'https://campusconnect-api-nx9k.onrender.com/api';
 
 interface UpdateInfo {
+  type: 'ota' | 'apk';
   updateAvailable: boolean;
-  latestVersionCode: number;
-  latestVersionName: string;
+  version?: string;
+  channel?: string;
   forceUpdate: boolean;
-  apkUrl: string | null;
-  releaseNotes: string | null;
+  apkUrl?: string | null;
+  releaseNotes?: string | null;
 }
 
 export default function UpdateChecker() {
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
   const [showModal, setShowModal] = useState(false);
-  const [downloading, setDownloading] = useState(false);
+  const [processing, setProcessing] = useState(false);
+  const appState = useRef(AppState.currentState);
+
+  // Animation for the refresh icon
+  const rotation = useSharedValue(0);
 
   useEffect(() => {
-    // Only check on Android
-    if (Platform.OS === 'android') {
-      checkForUpdate();
-    }
+    // Initial check
+    checkUpdateFlow();
+
+    // Re-check when app comes to foreground
+    const subscription = AppState.addEventListener('change', nextAppState => {
+      if (
+        appState.current.match(/inactive|background/) &&
+        nextAppState === 'active'
+      ) {
+        checkUpdateFlow();
+      }
+      appState.current = nextAppState;
+    });
+
+    return () => {
+      subscription.remove();
+    };
   }, []);
 
-  const checkForUpdate = async () => {
-    try {
-      // Get current version code from app
-      const buildNumber = Application.nativeBuildVersion;
-      const versionCode = parseInt(buildNumber || '1');
-
-      const response = await fetch(
-        `${API_URL}/update/check?platform=android&versionCode=${versionCode}`
+  useEffect(() => {
+    if (processing && updateInfo?.type === 'ota') {
+      rotation.value = withRepeat(
+        withTiming(360, { duration: 1000, easing: Easing.linear }),
+        -1,
+        false
       );
-      
-      const data: UpdateInfo = await response.json();
-      
-      if (data.updateAvailable) {
-        setUpdateInfo(data);
-        setShowModal(true);
+    } else {
+      rotation.value = 0;
+    }
+  }, [processing, updateInfo]);
+
+  const animatedStyles = useAnimatedStyle(() => {
+    return {
+      transform: [{ rotate: `${rotation.value}deg` }],
+    };
+  });
+
+  const checkUpdateFlow = async () => {
+    // Don't check if modal is already showing or if we are already processing
+    if (showModal || processing) return;
+
+    try {
+      // 1. Check for OTA Updates first (if not in development)
+      if (!__DEV__) {
+        const update = await Updates.checkForUpdateAsync();
+        if (update.isAvailable) {
+          setUpdateInfo({
+            type: 'ota',
+            updateAvailable: true,
+            channel: Updates.channel || 'unknown',
+            forceUpdate: true,
+            releaseNotes: 'New patches and improvements are ready for your current version.'
+          });
+          setShowModal(true);
+          return;
+        }
+      }
+
+      // 2. Fallback to API check for Android APKs
+      if (Platform.OS === 'android') {
+        await checkForAPKUpdate();
       }
     } catch (error) {
       console.log('Update check failed (non-critical):', error);
@@ -53,25 +99,60 @@ export default function UpdateChecker() {
     }
   };
 
-  const handleDownload = async () => {
-    if (!updateInfo?.apkUrl) return;
-
-    setDownloading(true);
+  const checkForAPKUpdate = async () => {
     try {
-      // Open APK URL in browser - Android will handle the download
-      const supported = await Linking.canOpenURL(updateInfo.apkUrl);
-      if (supported) {
-        await Linking.openURL(updateInfo.apkUrl);
-      } else {
-        Alert.alert('Error', 'Cannot open download link');
+      const buildNumber = Application.nativeBuildVersion;
+      const versionCode = parseInt(buildNumber || '1');
+
+      const response = await fetch(
+        `${API_URL}/update/check?platform=android&versionCode=${versionCode}`
+      );
+
+      const data = await response.json();
+
+      if (data.updateAvailable) {
+        setUpdateInfo({
+          type: 'apk',
+          updateAvailable: true,
+          version: data.latestVersionName,
+          forceUpdate: data.forceUpdate,
+          apkUrl: data.apkUrl,
+          releaseNotes: data.releaseNotes
+        });
+        setShowModal(true);
       }
     } catch (error) {
-      Alert.alert('Error', 'Failed to start download');
+      console.error('APK update check failed:', error);
+    }
+  };
+
+  const handleApplyUpdate = async () => {
+    if (!updateInfo) return;
+
+    setProcessing(true);
+    try {
+      if (updateInfo.type === 'ota') {
+        // Fetch and reload for OTA
+        await Updates.fetchUpdateAsync();
+        await Updates.reloadAsync();
+      } else if (updateInfo.type === 'apk' && updateInfo.apkUrl) {
+        // Open APK URL for native
+        // Some Android versions return false for canOpenURL on valid https links
+        // We bypass the check and try to open directly, then fallback to Alert
+        try {
+          await Linking.openURL(updateInfo.apkUrl);
+        } catch (err) {
+          Alert.alert('Error', 'Cannot open download link. Please open your browser and download manually.');
+        }
+      }
+    } catch (error) {
+      Alert.alert('Error', `Failed to process ${updateInfo.type.toUpperCase()} update. Please try again later.`);
     } finally {
-      setDownloading(false);
-      if (!updateInfo.forceUpdate) {
+      if (updateInfo.type === 'apk' || !updateInfo.forceUpdate) {
+        setProcessing(false);
         setShowModal(false);
       }
+      // Note: OTA success results in app reload, so no need to clear 'processing' manually here
     }
   };
 
@@ -79,7 +160,7 @@ export default function UpdateChecker() {
     if (updateInfo?.forceUpdate) {
       Alert.alert(
         'Update Required',
-        'This update is required to continue using the app.',
+        'This update is essential to keep the app running smoothly and securely.',
         [{ text: 'OK' }]
       );
     } else {
@@ -89,6 +170,8 @@ export default function UpdateChecker() {
 
   if (!showModal || !updateInfo) return null;
 
+  const isOTA = updateInfo.type === 'ota';
+
   return (
     <Modal visible={showModal} transparent animationType="fade" statusBarTranslucent>
       <View style={styles.overlay}>
@@ -96,18 +179,28 @@ export default function UpdateChecker() {
           {/* Header */}
           <LinearGradient colors={[LIME, '#A3E635']} style={styles.header}>
             <Sparkles size={32} color="black" />
-            <Text style={styles.headerTitle}>Update Available!</Text>
+            <Text style={styles.headerTitle}>
+              {isOTA ? 'App Refresh Ready!' : 'New Update Available!'}
+            </Text>
+            {updateInfo.channel && (
+              <View style={styles.channelBadge}>
+                <Text style={styles.channelText}>Source: {updateInfo.channel}</Text>
+              </View>
+            )}
           </LinearGradient>
 
           {/* Content */}
           <View style={styles.content}>
             <Text style={styles.versionText}>
-              v{updateInfo.latestVersionName}
+              {isOTA ? 'OTA Patch' : `v${updateInfo.version}`}
             </Text>
-            
+
             {updateInfo.releaseNotes && (
               <View style={styles.notesContainer}>
-                <Text style={styles.notesLabel}>What's New:</Text>
+                <View style={styles.notesHeader}>
+                  <Info size={14} color="#374151" />
+                  <Text style={styles.notesLabel}>What's New:</Text>
+                </View>
                 <Text style={styles.notesText}>{updateInfo.releaseNotes}</Text>
               </View>
             )}
@@ -123,18 +216,27 @@ export default function UpdateChecker() {
           {/* Actions */}
           <View style={styles.actions}>
             {!updateInfo.forceUpdate && (
-              <TouchableOpacity style={styles.laterButton} onPress={handleLater}>
+              <TouchableOpacity style={styles.laterButton} onPress={handleLater} disabled={processing}>
                 <Text style={styles.laterText}>Later</Text>
               </TouchableOpacity>
             )}
-            <TouchableOpacity 
-              style={[styles.downloadButton, downloading && styles.downloadingButton]}
-              onPress={handleDownload}
-              disabled={downloading}
+            <TouchableOpacity
+              style={[styles.actionButton, processing && styles.processingButton]}
+              onPress={handleApplyUpdate}
+              disabled={processing}
             >
-              <Download size={18} color="black" />
-              <Text style={styles.downloadText}>
-                {downloading ? 'Opening...' : 'Download Update'}
+              {isOTA ? (
+                <Animated.View style={animatedStyles}>
+                  <RefreshCcw size={18} color="black" />
+                </Animated.View>
+              ) : (
+                <Download size={18} color="black" />
+              )}
+              <Text style={styles.actionButtonText}>
+                {processing
+                  ? (isOTA ? 'Applying Patch...' : 'Opening Browser...')
+                  : (isOTA ? 'Update & Restart' : 'Download APK')
+                }
               </Text>
             </TouchableOpacity>
           </View>
@@ -158,16 +260,33 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 400,
     overflow: 'hidden',
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.3,
+    shadowRadius: 20,
+    elevation: 10,
   },
   header: {
     padding: 24,
     alignItems: 'center',
-    gap: 12,
+    gap: 8,
   },
   headerTitle: {
     fontSize: 22,
     fontWeight: 'bold',
     color: 'black',
+  },
+  channelBadge: {
+    backgroundColor: 'rgba(0,0,0,0.1)',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 99,
+  },
+  channelText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: 'rgba(0,0,0,0.6)',
+    textTransform: 'uppercase',
   },
   content: {
     padding: 24,
@@ -185,14 +304,21 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     width: '100%',
   },
+  notesHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 8,
+  },
   notesLabel: {
     fontWeight: 'bold',
+    fontSize: 14,
     color: '#374151',
-    marginBottom: 8,
   },
   notesText: {
     color: '#6B7280',
-    lineHeight: 22,
+    lineHeight: 20,
+    fontSize: 14,
   },
   forceWarning: {
     flexDirection: 'row',
@@ -219,12 +345,13 @@ const styles = StyleSheet.create({
   laterButton: {
     paddingVertical: 14,
     paddingHorizontal: 20,
+    justifyContent: 'center',
   },
   laterText: {
     color: '#6B7280',
     fontWeight: '600',
   },
-  downloadButton: {
+  actionButton: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
@@ -234,11 +361,14 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderRadius: 12,
   },
-  downloadingButton: {
+  processingButton: {
     opacity: 0.7,
   },
-  downloadText: {
+  actionButtonText: {
     fontWeight: 'bold',
     color: 'black',
   },
+  rotating: {
+    // Note: Reanimated rotation would be better, but keeping it simple for now
+  }
 });

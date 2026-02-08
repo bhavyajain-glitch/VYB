@@ -1,5 +1,5 @@
-import { View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet, Dimensions, Platform, Image, Alert } from 'react-native';
-import { useState } from 'react';
+import { View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet, Dimensions, Platform, Image, Alert, ActivityIndicator } from 'react-native';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'expo-router';
 import { ArrowLeft, ArrowRight, Check, Camera, X, Heart } from 'lucide-react-native';
 import Animated, { FadeIn, FadeInDown, SlideInRight, SlideInLeft } from 'react-native-reanimated';
@@ -34,11 +34,12 @@ export default function DatingProfileSetup() {
   const router = useRouter();
   const [step, setStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isEditMode, setIsEditMode] = useState(false);
 
   // Form state
   const [gender, setGender] = useState('');
   const [lookingFor, setLookingFor] = useState('');
-  const [age, setAge] = useState('');
   const [height, setHeight] = useState('');
   const [hometown, setHometown] = useState('');
   const [college, setCollege] = useState('ADYPU');
@@ -49,6 +50,39 @@ export default function DatingProfileSetup() {
   const [photos, setPhotos] = useState<string[]>([]);
 
   const totalSteps = 3;
+
+  // Fetch existing profile data on mount
+  useEffect(() => {
+    const loadExistingProfile = async () => {
+      try {
+        const res = await authAPI.getDatingProfile();
+        if (res.data) {
+          const profile = res.data;
+          // Check if user has existing profile data (edit mode)
+          const hasExistingProfile = profile.datingProfileComplete ||
+            (profile.datingPhotos && profile.datingPhotos.length > 0);
+          setIsEditMode(hasExistingProfile);
+
+          if (profile.datingGender) setGender(profile.datingGender);
+          if (profile.datingLookingFor) setLookingFor(profile.datingLookingFor);
+          if (profile.datingHeight) setHeight(profile.datingHeight);
+          if (profile.datingHometown) setHometown(profile.datingHometown);
+          if (profile.datingCollege) setCollege(profile.datingCollege);
+          if (profile.datingCourse) setCourse(profile.datingCourse);
+          if (profile.datingIntentions) setIntentions(profile.datingIntentions);
+          if (profile.datingBio) setBio(profile.datingBio);
+          if (profile.datingInterests) setInterests(profile.datingInterests);
+          if (profile.datingPhotos) setPhotos(profile.datingPhotos);
+        }
+      } catch (error) {
+        console.error('Error loading existing profile:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    loadExistingProfile();
+  }, []);
+
 
   const toggleIntention = (intention: string) => {
     setIntentions(prev =>
@@ -92,7 +126,7 @@ export default function DatingProfileSetup() {
 
   const canProceed = () => {
     switch (step) {
-      case 1: return gender && lookingFor && age && height;
+      case 1: return gender && lookingFor && height;
       case 2: return hometown && college && course && intentions.length > 0;
       case 3: return bio.length >= 20 && interests.length >= 3 && photos.length >= 1;
       default: return false;
@@ -107,7 +141,6 @@ export default function DatingProfileSetup() {
       const datingProfile = {
         datingGender: gender,
         datingLookingFor: lookingFor,
-        datingAge: parseInt(age),
         datingHeight: height,
         datingHometown: hometown,
         datingCollege: college,
@@ -151,9 +184,19 @@ export default function DatingProfileSetup() {
     if (router.canGoBack()) {
       router.back();
     } else {
-      router.replace('/(tabs)/dating');
+      // Prevent loop: If not complete, go HOME, not to /dating
+      router.replace('/');
     }
   };
+
+  if (isLoading) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color={PINK} />
+        <Text style={{ marginTop: 16, color: '#6B7280' }}>Loading your profile...</Text>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -164,18 +207,38 @@ export default function DatingProfileSetup() {
             <ArrowLeft size={24} color="white" />
           </TouchableOpacity>
           <View>
-            <Text style={styles.headerTitle}>Create Dating Profile</Text>
+            <Text style={styles.headerTitle}>{isEditMode ? 'Edit Dating Profile' : 'Setup Dating Profile'}</Text>
             <Text style={styles.headerSubtitle}>Step {step} of {totalSteps}</Text>
           </View>
           <View style={{ width: 40 }} />
         </View>
 
-        {/* Progress Bar */}
-        <View style={styles.progressContainer}>
-          {[1, 2, 3].map(s => (
-            <View key={s} style={[styles.progressBar, s <= step && styles.progressBarActive]} />
-          ))}
-        </View>
+        {/* Progress Bar / Step Tabs */}
+        {isEditMode ? (
+          <View style={styles.stepTabsContainer}>
+            {[
+              { num: 1, label: 'Basics' },
+              { num: 2, label: 'About' },
+              { num: 3, label: 'Photos' }
+            ].map(s => (
+              <TouchableOpacity
+                key={s.num}
+                style={[styles.stepTab, step === s.num && styles.stepTabActive]}
+                onPress={() => setStep(s.num)}
+              >
+                <Text style={[styles.stepTabText, step === s.num && styles.stepTabTextActive]}>
+                  {s.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        ) : (
+          <View style={styles.progressContainer}>
+            {[1, 2, 3].map(s => (
+              <View key={s} style={[styles.progressBar, s <= step && styles.progressBarActive]} />
+            ))}
+          </View>
+        )}
       </LinearGradient>
 
       {/* Content */}
@@ -215,31 +278,16 @@ export default function DatingProfileSetup() {
               ))}
             </View>
 
-            <Text style={styles.label}>Your age</Text>
+            <Text style={styles.label}>Your height</Text>
             <TextInput
               style={styles.input}
-              placeholder="e.g. 20"
+              placeholder="Height in cm (e.g. 175)"
               placeholderTextColor="#9CA3AF"
-              value={age}
-              onChangeText={text => setAge(text.replace(/[^0-9]/g, ''))}
+              value={height}
+              onChangeText={text => setHeight(text.replace(/[^0-9]/g, ''))}
               keyboardType="number-pad"
-              maxLength={2}
+              maxLength={3}
             />
-
-            <Text style={styles.label}>Your height</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.heightScroll}>
-              <View style={styles.heightRow}>
-                {HEIGHT_OPTIONS.map(h => (
-                  <TouchableOpacity
-                    key={h}
-                    style={[styles.heightChip, height === h && styles.heightChipActive]}
-                    onPress={() => setHeight(h)}
-                  >
-                    <Text style={[styles.heightText, height === h && styles.heightTextActive]}>{h}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </ScrollView>
           </Animated.View>
         )}
 
@@ -365,7 +413,7 @@ export default function DatingProfileSetup() {
           {step < totalSteps ? <ArrowRight size={20} color="white" /> : <Heart size={20} color="white" fill="white" />}
         </TouchableOpacity>
       </View>
-    </View>
+    </View >
   );
 }
 
@@ -379,6 +427,13 @@ const styles = StyleSheet.create({
   progressContainer: { flexDirection: 'row', gap: 8, marginTop: 20 },
   progressBar: { flex: 1, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.3)' },
   progressBarActive: { backgroundColor: 'white' },
+
+  // Step Tabs (for edit mode)
+  stepTabsContainer: { flexDirection: 'row', gap: 8, marginTop: 16 },
+  stepTab: { flex: 1, paddingVertical: 10, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center' },
+  stepTabActive: { backgroundColor: 'white' },
+  stepTabText: { color: 'rgba(255,255,255,0.8)', fontWeight: '600', fontSize: 13 },
+  stepTabTextActive: { color: PINK },
 
   content: { flex: 1 },
   scrollContent: { padding: 24, paddingBottom: 120, maxWidth: MAX_WIDTH, alignSelf: 'center', width: '100%' },

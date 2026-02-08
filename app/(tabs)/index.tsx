@@ -56,27 +56,27 @@ const suggestions = [
 // Story Item Component (Updated for real data)
 const StoryItem = ({ item, index, onPress, onAddStory, currentUserAvatar }: any) => (
   <Animated.View entering={FadeInDown.delay(index * 100).springify()}>
-  <TouchableOpacity style={styles.storyItem} onPress={item.isAddStory ? onAddStory : () => onPress(index)}>
-    {item.isAddStory ? (
-      <View style={styles.addStoryCircle}>
-        {currentUserAvatar ? (
-          <>
-            <Image source={getAvatarSource(currentUserAvatar)} style={styles.storyAvatarFaded} />
-            <View style={styles.addStoryPlus}><Plus size={16} color="white" /></View>
-          </>
-        ) : (
-          <Plus size={24} color="#9CA3AF" />
-        )}
-      </View>
-    ) : (
-      <View style={[styles.storyRing, item.hasUnviewed && styles.storyRingActive]}>
-        <Image source={getAvatarSource(item.user?.profileImage)} style={styles.storyAvatar} />
-      </View>
-    )}
-    <Text style={styles.storyName} numberOfLines={1}>
-      {item.isAddStory ? 'Your story' : item.user?.username}
-    </Text>
-  </TouchableOpacity>
+    <TouchableOpacity style={styles.storyItem} onPress={item.isAddStory ? onAddStory : () => onPress(index)}>
+      {item.isAddStory ? (
+        <View style={styles.addStoryCircle}>
+          {currentUserAvatar ? (
+            <>
+              <Image source={getAvatarSource(currentUserAvatar)} style={styles.storyAvatarFaded} />
+              <View style={styles.addStoryPlus}><Plus size={16} color="white" /></View>
+            </>
+          ) : (
+            <Plus size={24} color="#9CA3AF" />
+          )}
+        </View>
+      ) : (
+        <View style={[styles.storyRing, item.hasUnviewed && styles.storyRingActive]}>
+          <Image source={getAvatarSource(item.user?.profileImage)} style={styles.storyAvatar} />
+        </View>
+      )}
+      <Text style={styles.storyName} numberOfLines={1}>
+        {item.isAddStory ? 'Your story' : item.user?.username}
+      </Text>
+    </TouchableOpacity>
   </Animated.View>
 );
 
@@ -167,17 +167,17 @@ export default function FeedScreen() {
 
   const checkAuth = async () => {
     try {
-        const userInfo = await AsyncStorage.getItem('userInfo');
-        if (userInfo) {
-            const user = JSON.parse(userInfo);
-            // Handle both 'id' and '_id' properties for compatibility
-            setCurrentUserId(user.id || user._id);
-            setCurrentUserAvatar(user.profileImage);
-        } else {
-            router.replace('/onboarding');
-        }
+      const userInfo = await AsyncStorage.getItem('userInfo');
+      if (userInfo) {
+        const user = JSON.parse(userInfo);
+        // Handle both 'id' and '_id' properties for compatibility
+        setCurrentUserId(user.id || user._id);
+        setCurrentUserAvatar(user.profileImage);
+      } else {
+        router.replace('/onboarding');
+      }
     } catch (e) {
-        console.error(e);
+      console.error(e);
     }
   };
 
@@ -190,60 +190,94 @@ export default function FeedScreen() {
     }
   };
 
-  const handleAddStory = async () => {
+  const uploadStoryData = async (imageData: string) => {
+    setUploadingStory(true);
+    try {
+      const res = await authAPI.createStory(imageData);
+      setUploadingStory(false);
+      Alert.alert('Success', 'Story added!');
+      fetchStories();
+    } catch (error) {
+      console.error('Story upload failed:', error);
+      Alert.alert('Error', 'Failed to upload story');
+      setUploadingStory(false);
+    }
+  };
+
+  const takePhotoStory = async () => {
+    try {
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [9, 16],
+        quality: 0.8,
+        base64: true
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        let imageData: string;
+        if (result.assets[0].base64) {
+          imageData = `data:image/jpeg;base64,${result.assets[0].base64}`;
+        } else {
+          imageData = result.assets[0].uri;
+        }
+        await uploadStoryData(imageData);
+      }
+    } catch (error) {
+      console.error('Take photo error:', error);
+      Alert.alert('Error', 'Failed to take photo');
+    }
+  };
+
+  const pickImageStory = async () => {
     try {
       let imageData: string | null = null;
 
       if (Platform.OS === 'web') {
-         // Web: Use Custom Picker + Processor
-         const uri = await pickImageWebCustom();
-         if (uri) {
-             imageData = await processWebImage(uri);
-         }
+        const uri = await pickImageWebCustom();
+        if (uri) {
+          imageData = await processWebImage(uri);
+        }
       } else {
-         // Native: Use Expo Image Picker
-         const result = await ImagePicker.launchImageLibraryAsync({
-            mediaTypes: ImagePicker.MediaTypeOptions.Images,
-            allowsEditing: true, // Native only
-            aspect: [9, 16],
-            quality: 0.8,
-            base64: true
-         });
+        const result = await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ImagePicker.MediaTypeOptions.Images,
+          allowsEditing: true,
+          aspect: [9, 16],
+          quality: 0.8,
+          base64: true
+        });
 
-         if (!result.canceled && result.assets[0]) {
-             if (result.assets[0].base64) {
-                 imageData = `data:image/jpeg;base64,${result.assets[0].base64}`;
-             } else {
-                 imageData = result.assets[0].uri;
-             }
-         }
+        if (!result.canceled && result.assets[0]) {
+          if (result.assets[0].base64) {
+            imageData = `data:image/jpeg;base64,${result.assets[0].base64}`;
+          } else {
+            imageData = result.assets[0].uri;
+          }
+        }
       }
 
       if (imageData) {
-        setUploadingStory(true);
-        // rest of the upload logic handles imageData...
-        
-        try {
-           // Direct usage of imageData (it is now base64 or valid URI)
-           // Logic from original file continues here but we need to verify where imageData is used
-           // Original code:
-           // setUploadingStory(true);
-           // ... logic ...
-           // const res = await authAPI.createStory(imageData);
-
-           const res = await authAPI.createStory(imageData);
-           setUploadingStory(false);
-           Alert.alert('Success', 'Story added!');
-           fetchStories();
-        } catch (error) {
-           console.error('Story upload failed:', error);
-           Alert.alert('Error', 'Failed to upload story');
-           setUploadingStory(false);
-        }
+        await uploadStoryData(imageData);
       }
     } catch (error) {
-       console.error('Pick image error:', error);
-       Alert.alert('Error', 'Failed to pick image');
+      console.error('Pick image error:', error);
+      Alert.alert('Error', 'Failed to pick image');
+    }
+  };
+
+  const handleAddStory = async () => {
+    if (Platform.OS === 'web') {
+      await pickImageStory();
+    } else {
+      Alert.alert(
+        "Add Story",
+        "Choose a source",
+        [
+          { text: "Camera", onPress: takePhotoStory },
+          { text: "Gallery", onPress: pickImageStory },
+          { text: "Cancel", style: "cancel" }
+        ]
+      );
     }
   };
 
@@ -259,14 +293,14 @@ export default function FeedScreen() {
         setRefreshing(true);
       }
       const res = await authAPI.getPosts(pageNum, 10);
-      
+
       if (isRefresh) {
         setPosts(res.data.posts);
         setPage(1);
       } else {
         setPosts(prev => [...prev, ...res.data.posts]);
       }
-      
+
       setHasMore(res.data.hasMore);
       setPage(pageNum);
     } catch (error) {
@@ -292,15 +326,15 @@ export default function FeedScreen() {
   const handleScroll = (event: any) => {
     const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent;
     const paddingToBottom = 100; // Load more when 100px from bottom
-    
+
     if (layoutMeasurement.height + contentOffset.y >= contentSize.height - paddingToBottom) {
       loadMorePosts();
     }
   };
 
   const openComments = (postId: string) => {
-      setSelectedPostId(postId);
-      setCommentModalVisible(true);
+    setSelectedPostId(postId);
+    setCommentModalVisible(true);
   };
 
   const openOptions = (post: any) => {
@@ -319,33 +353,33 @@ export default function FeedScreen() {
       <View style={styles.mainLayout}>
         {/* Center Feed */}
         <View style={styles.feedColumn}>
-          <ScrollView 
-            showsVerticalScrollIndicator={false} 
+          <ScrollView
+            showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.scrollContent}
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
             onScroll={handleScroll}
             scrollEventThrottle={400}
           >
             {/* Stories */}
-            <ScrollView 
-              horizontal 
-              showsHorizontalScrollIndicator={false} 
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.storiesContainer}
               style={styles.storiesScroll}
             >
               {/* Add Story Button */}
-              <StoryItem 
-                item={{ isAddStory: true }} 
-                index={0} 
+              <StoryItem
+                item={{ isAddStory: true }}
+                index={0}
                 onAddStory={handleAddStory}
                 currentUserAvatar={currentUserAvatar}
-                onPress={() => {}}
+                onPress={() => { }}
               />
               {/* Other Stories */}
               {storyGroups.map((group: any, index: number) => (
-                <StoryItem 
-                  key={group.user._id} 
-                  item={group} 
+                <StoryItem
+                  key={group.user._id}
+                  item={group}
                   index={index + 1}
                   onPress={() => openStoryViewer(index)}
                   onAddStory={handleAddStory}
@@ -366,20 +400,20 @@ export default function FeedScreen() {
             <View style={styles.postsList}>
               {posts.length === 0 && !refreshing ? (
                 <View style={{ padding: 20, alignItems: 'center' }}>
-                    <Text style={{ color: '#9CA3AF' }}>No posts yet. Be the first to post!</Text>
+                  <Text style={{ color: '#9CA3AF' }}>No posts yet. Be the first to post!</Text>
                 </View>
               ) : (
                 posts.map((post: any, index: number) => (
-                    <PostItem 
-                        key={post._id} 
-                        item={post} 
-                        onComment={openComments} 
-                        onOptions={openOptions}
-                        currentUserId={currentUserId} 
-                    />
+                  <PostItem
+                    key={post._id}
+                    item={post}
+                    onComment={openComments}
+                    onOptions={openOptions}
+                    currentUserId={currentUserId}
+                  />
                 ))
               )}
-              
+
               {/* Loading More Indicator */}
               {loadingMore && (
                 <View style={{ padding: 20, alignItems: 'center' }}>
@@ -387,11 +421,12 @@ export default function FeedScreen() {
                   <Text style={{ color: '#9CA3AF', marginTop: 8, fontSize: 12 }}>Loading more posts...</Text>
                 </View>
               )}
-              
+
               {/* End of Feed Indicator */}
               {!hasMore && posts.length > 0 && (
                 <View style={{ padding: 20, alignItems: 'center' }}>
-                  <Text style={{ color: '#9CA3AF', fontSize: 12 }}>✨ You're all caught up!</Text>
+                  {/* <Text style={{ color: '#9CA3AF', fontSize: 12 }}>✨ You're all caught up!</Text> */}
+                  <Text style={{ color: '#9CA3AF', fontSize: 12 }}>✨ Abe Lodu !</Text>
                 </View>
               )}
             </View>
@@ -401,23 +436,23 @@ export default function FeedScreen() {
         {/* Right Sidebar (Desktop only) */}
         {isDesktop && <RightSidebar />}
       </View>
-      
+
       {/* Floating Action Button for Mobile */}
       {!isDesktop && (
-        <TouchableOpacity 
-          style={styles.fab} 
+        <TouchableOpacity
+          style={styles.fab}
           onPress={() => router.push('/create-post')}
           activeOpacity={0.9}
         >
           <Plus size={28} color="black" />
         </TouchableOpacity>
       )}
-      
+
       {/* Comment Modal Overlay */}
-      <CommentModal 
-        visible={commentModalVisible} 
-        onClose={() => setCommentModalVisible(false)} 
-        postId={selectedPostId} 
+      <CommentModal
+        visible={commentModalVisible}
+        onClose={() => setCommentModalVisible(false)}
+        postId={selectedPostId}
       />
 
       {/* Story Viewer */}
@@ -426,55 +461,57 @@ export default function FeedScreen() {
         storyGroups={storyGroups}
         initialGroupIndex={selectedStoryIndex}
         onClose={async (action, payload) => {
-            if (action === 'delete' && payload) {
-                // Confirm delete
-                if (Platform.OS === 'web') {
-                    if (confirm('Are you sure you want to delete this story?')) {
-                        try {
-                            await authAPI.archiveStory(payload);
-                            setStoryViewerVisible(false);
-                            fetchStories(); // Refresh stories
-                        } catch (error) {
-                            console.error(error);
-                            alert('Failed to delete story');
-                        }
-                    }
-                } else {
-                    Alert.alert('Delete Story', 'Are you sure?', [
-                        { text: 'Cancel', style: 'cancel' },
-                        { text: 'Delete', style: 'destructive', onPress: async () => {
-                            try {
-                                await authAPI.archiveStory(payload);
-                                setStoryViewerVisible(false);
-                                fetchStories();
-                            } catch (error) {
-                                Alert.alert('Error', 'Failed to delete story');
-                            }
-                        }}
-                    ]);
+          if (action === 'delete' && payload) {
+            // Confirm delete
+            if (Platform.OS === 'web') {
+              if (confirm('Are you sure you want to delete this story?')) {
+                try {
+                  await authAPI.archiveStory(payload);
+                  setStoryViewerVisible(false);
+                  fetchStories(); // Refresh stories
+                } catch (error) {
+                  console.error(error);
+                  alert('Failed to delete story');
                 }
+              }
             } else {
-                setStoryViewerVisible(false);
+              Alert.alert('Delete Story', 'Are you sure?', [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                  text: 'Delete', style: 'destructive', onPress: async () => {
+                    try {
+                      await authAPI.archiveStory(payload);
+                      setStoryViewerVisible(false);
+                      fetchStories();
+                    } catch (error) {
+                      Alert.alert('Error', 'Failed to delete story');
+                    }
+                  }
+                }
+              ]);
             }
+          } else {
+            setStoryViewerVisible(false);
+          }
         }}
       />
 
       {/* Post Options Modal */}
-      <PostOptionsModal 
+      <PostOptionsModal
         visible={optionsModalVisible}
         onClose={() => setOptionsModalVisible(false)}
         post={selectedPostOptions}
         onBlockUser={handleBlockUser}
         currentUserId={currentUserId}
         onDeletePost={async (postId) => {
-            try {
-                await authAPI.deletePost(postId);
-                setPosts(prev => prev.filter(p => p._id !== postId));
-                Alert.alert('Success', 'Post deleted successfully');
-            } catch (error) {
-                console.error(error);
-                Alert.alert('Error', 'Failed to delete post');
-            }
+          try {
+            await authAPI.deletePost(postId);
+            setPosts(prev => prev.filter(p => p._id !== postId));
+            Alert.alert('Success', 'Post deleted successfully');
+          } catch (error) {
+            console.error(error);
+            Alert.alert('Error', 'Failed to delete post');
+          }
         }}
       />
     </View>
@@ -484,7 +521,7 @@ export default function FeedScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'white' },
   mainLayout: { flex: 1, flexDirection: 'row', justifyContent: 'center', backgroundColor: isDesktop ? 'white' : 'white' },
-  
+
   // Feed Layout
   feedColumn: { flex: 1, maxWidth: FEED_WIDTH, marginRight: isDesktop ? 32 : 0 },
   scrollContent: { paddingVertical: 24, alignItems: isDesktop ? 'center' : 'stretch' },
@@ -519,11 +556,11 @@ const styles = StyleSheet.create({
   imageWrapper: { borderRadius: 4, overflow: 'hidden', borderWidth: 1, borderColor: '#F3F4F6', position: 'relative' },
   postImage: { width: '100%', aspectRatio: 1 },
   heartOverlay: { position: 'absolute', top: '50%', left: '50%', marginLeft: -40, marginTop: -40, zIndex: 10, shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 4.65 },
-  
+
   postActions: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12 },
   actionsLeft: { flexDirection: 'row', alignItems: 'center', gap: 16 },
   actionButton: { flexDirection: 'row', alignItems: 'center' },
-  
+
   postFooter: { paddingHorizontal: 4 },
   likesText: { fontWeight: 'bold', marginBottom: 8 },
   caption: { fontSize: 14, lineHeight: 20, marginBottom: 8 },
@@ -544,7 +581,7 @@ const styles = StyleSheet.create({
   suggestionsHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
   suggestionsTitle: { color: '#6B7280', fontWeight: 'bold', fontSize: 14 },
   seeAllText: { color: '#111827', fontSize: 12, fontWeight: 'bold' },
-  
+
   suggestionsList: { gap: 16 },
   suggestionItem: { flexDirection: 'row', alignItems: 'center' },
   suggestionAvatar: { width: 32, height: 32, borderRadius: 16 },
