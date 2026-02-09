@@ -101,11 +101,10 @@ export default function UpdateChecker() {
 
   const checkForAPKUpdate = async () => {
     try {
-      const buildNumber = Application.nativeBuildVersion;
-      const versionCode = parseInt(buildNumber || '1');
+      const currentVersion = Application.nativeApplicationVersion || '1.0.0';
 
       const response = await fetch(
-        `${API_URL}/update/check?platform=android&versionCode=${versionCode}`
+        `${API_URL}/update/check?platform=android&versionName=${currentVersion}`
       );
 
       const data = await response.json();
