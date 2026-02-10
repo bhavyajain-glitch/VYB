@@ -56,7 +56,8 @@
           "photosPermission": "Allow CampusConnect to access your photos for profile and posts."
         }
       ],
-      "expo-font"
+      "expo-font",
+      "expo-web-browser"
     ],
     "scheme": "campusconnect",
     "experiments": {

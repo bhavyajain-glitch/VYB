@@ -38,37 +38,85 @@ export default function AuthScreen() {
     androidClientId: GOOGLE_ANDROID_CLIENT_ID,
     iosClientId: GOOGLE_IOS_CLIENT_ID,
     webClientId: GOOGLE_EXPO_CLIENT_ID,
+    selectAccount: true,
+    responseType: 'id_token', // <--- THIS IS THE KEY FIX FOR WEB
   });
 
+  // Log the redirect URI for debugging - this is the EXACT link for Google Console
   useEffect(() => {
-    if (response?.type === 'success') {
-      const { idToken } = response.authentication!;
-      if (idToken) {
-        handleGoogleLogin(idToken);
+    if (request) {
+      console.log('--- EXPO REDIRECT URI FOR GOOGLE CONSOLE ---');
+      console.log(request.redirectUri);
+      console.log('--------------------------------------------');
+    }
+  }, [request]);
+
+  useEffect(() => {
+    if (response) {
+      console.log('Auth Response Type:', response.type);
+      if (response.type === 'success') {
+        // RESILIENT TOKEN EXTRACTION: Google returns it in different places depending on platform
+        const idToken = response.authentication?.idToken || (response as any).params?.id_token;
+
+        if (idToken) {
+          console.log('Token found! Proceeding to server login...');
+          handleGoogleLogin(idToken);
+        } else {
+          console.error('Auth succeeded but ID Token is missing in response!');
+          console.log('Full Response Params:', JSON.stringify(response.params));
+        }
+      } else if (response.type === 'error') {
+        console.error('Auth Error Details:', response.error);
       }
     }
   }, [response]);
 
   const handleGoogleLogin = async (idToken: string) => {
+    console.log('--- STARTING SERVER LOGIN ---');
+    console.log('Sending ID Token to Backend...');
     setIsLoading(true);
     try {
       const resp = await authAPI.googleLogin(idToken);
+      console.log('Server Response Received:', resp.status);
+
+      if (!resp.data || !resp.data.token) {
+        throw new Error('Server returned success but no token! Check backend logs.');
+      }
+
       const { token, isNewUser, user } = resp.data;
+      console.log('Login Successful! Saving session...');
 
       // Save token and user info
       await AsyncStorage.setItem('userToken', token);
       await AsyncStorage.setItem('userInfo', JSON.stringify(user));
+
+      console.log('Navigation to:', isNewUser ? 'Profile Setup' : 'Tabs');
 
       if (isNewUser) {
         router.replace('/profile-setup');
       } else {
         router.replace('/(tabs)');
       }
+
+      // Web-only: Ensure closing window doesn't block progress
+      if (Platform.OS === 'web') {
+        setTimeout(() => {
+          // If still on auth page after 2 seconds, force navigation
+          if (window.location.pathname.includes('auth')) {
+            window.location.href = isNewUser ? '/profile-setup' : '/';
+          }
+        }, 2000);
+      }
     } catch (error: any) {
-      Alert.alert('Error', 'Google login failed. Please try again.');
-      console.error(error);
+      console.error('SERVER LOGIN ERROR:', error);
+      if (error.response) {
+        console.error('Server Data:', error.response.data);
+        console.error('Server Status:', error.response.status);
+      }
+      Alert.alert('Login Error', error.response?.data?.message || 'The server rejected your Google login.');
     } finally {
       setIsLoading(false);
+      console.log('--- SERVER LOGIN FINISHED ---');
     }
   };
 

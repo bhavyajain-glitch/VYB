@@ -1,7 +1,8 @@
 import { Platform, Alert } from 'react-native';
 
-// ======= TOGGLE THIS FOR LOCAL TESTING =======
-export const USE_LOCAL_API = false; // Set to true for local testing, false for production
+// ======= AUTOMATIC API SELECTION =======
+// Automatically uses local API in development, and Render for Production/APK
+export const USE_LOCAL_API = __DEV__;
 // ==============================================
 
 // API URLs
