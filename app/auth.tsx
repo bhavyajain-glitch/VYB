@@ -20,7 +20,10 @@ const isSmallScreen = width < 380;
 // Google Client IDs (These would normally come from environment variables)
 const GOOGLE_ANDROID_CLIENT_ID = '560227419750-45vcnpoiog5k2unnrc057caaq6s5imp4.apps.googleusercontent.com';
 const GOOGLE_IOS_CLIENT_ID = 'YOUR_IOS_CLIENT_ID_HERE';
-const GOOGLE_EXPO_CLIENT_ID = '560227419750-6vpcqgo8l2uopfg9e4j24dq7102dkb5i.apps.googleusercontent.com';
+const GOOGLE_WEB_CLIENT_ID = '560227419750-6vpcqgo8l2uopfg9e4j24dq7102dkb5i.apps.googleusercontent.com';
+
+// Netlify production URL for web redirect
+const WEB_REDIRECT_URI = 'https://sparkling-sunflower-b6100e.netlify.app';
 
 export default function AuthScreen() {
   const router = useRouter();
@@ -33,13 +36,14 @@ export default function AuthScreen() {
   const [hasAcceptedPolicy, setHasAcceptedPolicy] = useState(false);
   const otpRefs = useRef<(TextInput | null)[]>([]);
 
-  // Google Login Hook
-  const [request, response, promptAsync] = Google.useAuthRequest({
+  // Google Login Hook - Use useIdTokenAuthRequest for web redirect flow (avoids popup blocking)
+  const [request, response, promptAsync] = Google.useIdTokenAuthRequest({
     androidClientId: GOOGLE_ANDROID_CLIENT_ID,
     iosClientId: GOOGLE_IOS_CLIENT_ID,
-    webClientId: GOOGLE_EXPO_CLIENT_ID,
+    clientId: GOOGLE_WEB_CLIENT_ID,
     selectAccount: true,
-    responseType: 'id_token', // <--- THIS IS THE KEY FIX FOR WEB
+    // Use direct redirect on web to avoid popup blocking
+    redirectUri: Platform.OS === 'web' ? WEB_REDIRECT_URI : undefined,
   });
 
   // Log the redirect URI for debugging - this is the EXACT link for Google Console
