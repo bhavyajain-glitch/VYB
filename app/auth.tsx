@@ -55,6 +55,45 @@ export default function AuthScreen() {
     }
   }, [request]);
 
+  // WEB ONLY: Manually capture OAuth response from URL after Google redirect
+  // The hook's state is lost on full page reload, so we parse the URL directly
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+
+    const handleWebRedirect = () => {
+      // Check URL hash (implicit flow) and query params
+      const hash = window.location.hash;
+      const search = window.location.search;
+
+      // Try to extract id_token from hash fragment (e.g., #id_token=xxx&...)
+      if (hash) {
+        const hashParams = new URLSearchParams(hash.substring(1));
+        const idToken = hashParams.get('id_token');
+        if (idToken) {
+          console.log('Found id_token in URL hash, proceeding to login...');
+          // Clear the URL to prevent re-processing
+          window.history.replaceState({}, document.title, window.location.pathname);
+          handleGoogleLogin(idToken);
+          return;
+        }
+      }
+
+      // Try query params (authorization code flow fallback)
+      if (search) {
+        const queryParams = new URLSearchParams(search);
+        const idToken = queryParams.get('id_token');
+        if (idToken) {
+          console.log('Found id_token in URL query, proceeding to login...');
+          window.history.replaceState({}, document.title, window.location.pathname);
+          handleGoogleLogin(idToken);
+          return;
+        }
+      }
+    };
+
+    handleWebRedirect();
+  }, []); // Run once on mount
+
   useEffect(() => {
     if (response) {
       console.log('Auth Response Type:', response.type);
