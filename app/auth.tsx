@@ -277,8 +277,15 @@ export default function AuthScreen() {
                   {/* Google Login Button */}
                   <TouchableOpacity
                     style={styles.googleButton}
-                    onPress={() => promptAsync()}
-                    disabled={isLoading}
+                    onPress={() => {
+                      // On web, use full page redirect instead of popup to avoid blocking
+                      if (Platform.OS === 'web' && request?.url) {
+                        window.location.href = request.url;
+                      } else {
+                        promptAsync();
+                      }
+                    }}
+                    disabled={isLoading || !request}
                   >
                     <View style={styles.googleLogo}>
                       <Text style={styles.googleG}>G</Text>
