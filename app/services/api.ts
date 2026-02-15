@@ -27,7 +27,14 @@ const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 const request = async (endpoint: string, method: string, body?: any, retryCount = 0): Promise<any> => {
   try {
-    const token = await require('@react-native-async-storage/async-storage').default.getItem('userToken');
+    // Get token from AsyncStorage, with localStorage fallback for web
+    let token = await require('@react-native-async-storage/async-storage').default.getItem('userToken');
+
+    // Fallback to localStorage on web if AsyncStorage returns null
+    if (!token && typeof window !== 'undefined' && typeof localStorage !== 'undefined') {
+      token = localStorage.getItem('userToken');
+    }
+
     const authHeaders = { ...headers, Authorization: token ? `Bearer ${token}` : '' };
 
     const controller = new AbortController();

@@ -54,16 +54,25 @@ export default function WebAuthHandler({ children }: { children: React.ReactNode
                     await AsyncStorage.setItem('userToken', token);
                     await AsyncStorage.setItem('userInfo', JSON.stringify(user));
 
-                    console.log('[WebAuthHandler] Navigating to:', isNewUser ? 'Profile Setup' : 'Tabs');
+                    // Verify the token was actually saved (web localStorage can be tricky)
+                    const savedToken = await AsyncStorage.getItem('userToken');
+                    console.log('[WebAuthHandler] Token saved:', savedToken ? 'YES' : 'NO');
 
-                    // Use setTimeout to ensure state updates complete before navigation
-                    setTimeout(() => {
-                        if (isNewUser) {
-                            router.replace('/profile-setup');
-                        } else {
-                            router.replace('/(tabs)');
+                    if (!savedToken) {
+                        // Fallback: save directly to localStorage on web
+                        if (typeof localStorage !== 'undefined') {
+                            localStorage.setItem('userToken', token);
+                            localStorage.setItem('userInfo', JSON.stringify(user));
+                            console.log('[WebAuthHandler] Used localStorage fallback');
                         }
-                    }, 100);
+                    }
+
+                    const targetPath = isNewUser ? '/profile-setup' : '/';
+                    console.log('[WebAuthHandler] Navigating to:', targetPath);
+
+                    // On web, use window.location for a full page reload to ensure token is picked up
+                    // This is more reliable than expo-router navigation after saving to storage
+                    window.location.href = targetPath;
                 } catch (error: any) {
                     console.error('[WebAuthHandler] Login error:', error);
                     setIsProcessingAuth(false);
