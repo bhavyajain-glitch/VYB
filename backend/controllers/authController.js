@@ -88,10 +88,17 @@ exports.googleLogin = async (req, res) => {
   }
 
   try {
+    // Accept tokens from multiple client IDs (Web, Android, iOS)
+    // This is necessary because the token's audience will be the client ID used to sign in
+    const WEB_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '560227419750-6vpcqgo8l2uopfg9e4j24dq7102dkb5i.apps.googleusercontent.com';
+    const ANDROID_CLIENT_ID = process.env.GOOGLE_ANDROID_CLIENT_ID || '560227419750-45vcnpoiog5k2unnrc057caaq6s5imp4.apps.googleusercontent.com';
+
+    console.log('Verifying Google token with audiences:', [WEB_CLIENT_ID, ANDROID_CLIENT_ID]);
+
     // Verify the ID token using Google's client library
     const ticket = await client.verifyIdToken({
       idToken,
-      audience: process.env.GOOGLE_CLIENT_ID,
+      audience: [WEB_CLIENT_ID, ANDROID_CLIENT_ID], // Accept both
     });
 
     const payload = ticket.getPayload();
