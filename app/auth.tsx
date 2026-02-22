@@ -11,7 +11,9 @@ import * as Google from 'expo-auth-session/providers/google';
 import * as WebBrowser from 'expo-web-browser';
 import { makeRedirectUri } from 'expo-auth-session';
 
-WebBrowser.maybeCompleteAuthSession();
+if (Platform.OS === 'web') {
+  WebBrowser.maybeCompleteAuthSession();
+}
 
 const LIME = '#D4FF00';
 const { width } = Dimensions.get('window');
@@ -61,6 +63,8 @@ export default function AuthScreen() {
     if (Platform.OS !== 'web') return;
 
     const handleWebRedirect = () => {
+      if (typeof window === 'undefined') return;
+
       // Check URL hash (implicit flow) and query params
       const hash = window.location.hash;
       const search = window.location.search;
@@ -142,7 +146,7 @@ export default function AuthScreen() {
       }
 
       // Web-only: Ensure closing window doesn't block progress
-      if (Platform.OS === 'web') {
+      if (Platform.OS === 'web' && typeof window !== 'undefined') {
         setTimeout(() => {
           // If still on auth page after 2 seconds, force navigation
           if (window.location.pathname.includes('auth')) {

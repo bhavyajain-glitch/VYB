@@ -16,6 +16,8 @@ export default function WebAuthHandler({ children }: { children: React.ReactNode
         if (Platform.OS !== 'web') return;
 
         const handleWebRedirect = async () => {
+            if (typeof window === 'undefined') return;
+
             // Check URL hash (implicit flow) and query params
             const hash = window.location.hash;
             const search = window.location.search;
