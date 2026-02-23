@@ -59,7 +59,10 @@
       "expo-font",
       "expo-web-browser"
     ],
-    "scheme": "campusconnect",
+    "schemes": [
+      "campusconnect",
+      "com.googleusercontent.apps.560227419750-45vcnpoiog5k2unnrc057caaq6s5imp4"
+    ],
     "experiments": {
       "typedRoutes": true
     },

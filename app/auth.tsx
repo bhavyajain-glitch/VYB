@@ -38,6 +38,20 @@ export default function AuthScreen() {
   const [hasAcceptedPolicy, setHasAcceptedPolicy] = useState(false);
   const otpRefs = useRef<(TextInput | null)[]>([]);
 
+  // Explicitly define redirect URI using the Reverse Client ID Scheme
+  // This is required by Google for Android AppAuth to work without "Custom URI scheme not enabled" error.
+  const nativeRedirectUri = makeRedirectUri({
+    scheme: 'com.googleusercontent.apps.560227419750-45vcnpoiog5k2unnrc057caaq6s5imp4',
+    path: 'oauth2redirect'
+  });
+
+  // Debugging: Show the URI we are using
+  useEffect(() => {
+    if (Platform.OS !== 'web') {
+      // Alert.alert("Debug URI", nativeRedirectUri); // Uncomment to debug logic
+    }
+  }, []);
+
   // Google Login Hook - Use useIdTokenAuthRequest for web redirect flow (avoids popup blocking)
   const [request, response, promptAsync] = Google.useIdTokenAuthRequest({
     androidClientId: GOOGLE_ANDROID_CLIENT_ID,
@@ -45,7 +59,8 @@ export default function AuthScreen() {
     clientId: GOOGLE_WEB_CLIENT_ID,
     selectAccount: true,
     // Use direct redirect on web to avoid popup blocking
-    redirectUri: Platform.OS === 'web' ? WEB_REDIRECT_URI : undefined,
+    // Use explicit package-based URI on native to avoid "Custom URI scheme not enabled" error
+    redirectUri: Platform.OS === 'web' ? WEB_REDIRECT_URI : nativeRedirectUri,
   });
 
   // Log the redirect URI for debugging - this is the EXACT link for Google Console
