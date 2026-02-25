@@ -25,7 +25,7 @@ import Animated, {
     Easing,
 } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
-import { authAPI } from '../app/services/api';
+import { authAPI } from '../services/api';
 import { getAvatarSource } from '../utils/imageUtils';
 
 const { width } = Dimensions.get('window');
@@ -65,6 +65,11 @@ export default function BlindDatingModal({ visible, onClose, coins, onCoinsChang
     const [inputText, setInputText] = useState('');
     const [sending, setSending] = useState(false);
     const [partnerProfile, setPartnerProfile] = useState<PartnerProfile | null>(null);
+    const [expiresAt, setExpiresAt] = useState<Date | null>(null);
+    const [countdown, setCountdown] = useState<string | null>(null);
+    const [userChoice, setUserChoice] = useState<string>('none');
+    const [partnerChoice, setPartnerChoice] = useState<string>('none');
+    const [partnerRevealed, setPartnerRevealed] = useState<boolean>(false);
     const [currentUserId, setCurrentUserId] = useState<string | null>(null);
     const scrollViewRef = useRef<ScrollView>(null);
 
@@ -125,11 +130,26 @@ export default function BlindDatingModal({ visible, onClose, coins, onCoinsChang
                     if (newStatus === 'matched' || newStatus === 'active' || newStatus === 'extended') {
                         setStatus(newStatus === 'matched' ? 'active' : newStatus);
                         setSessionId(res.data.sessionId);
+                        if (res.data.expiresAt) {
+                            setExpiresAt(new Date(res.data.expiresAt));
+                        }
                         if (res.data.messages) {
                             setMessages(res.data.messages);
                         }
+                        // Capture choices if present
+                        if (res.data.user1Choice && currentUserId) {
+                            const isUser1 = res.data.user1 === currentUserId;
+                            setUserChoice(isUser1 ? res.data.user1Choice : res.data.user2Choice);
+                            setPartnerChoice(isUser1 ? res.data.user2Choice : res.data.user1Choice);
+                        }
                     } else if (newStatus === 'ended' && status !== 'ended') {
                         setStatus('ended');
+                        // Check if partner left
+                        if (res.data.partnerLeft || res.data.endReason === 'user_left') {
+                            Alert.alert('Partner Left', 'Your chat partner has left the session.');
+                        } else if (res.data.endReason === 'abandoned') {
+                            Alert.alert('Session Ended', 'The session ended due to inactivity.');
+                        }
                     } else if (newStatus === 'searching') {
                         setStatus('searching');
                     }
@@ -161,6 +181,9 @@ export default function BlindDatingModal({ visible, onClose, coins, onCoinsChang
                     if (res.data.status === 'ended') {
                         setStatus('ended');
                     }
+                    if (res.data.expiresAt) {
+                        setExpiresAt(new Date(res.data.expiresAt));
+                    }
                     if (res.data.messages) {
                         setMessages(res.data.messages);
                     }
@@ -178,6 +201,35 @@ export default function BlindDatingModal({ visible, onClose, coins, onCoinsChang
             if (intervalId) clearInterval(intervalId);
         };
     }, [sessionId, status]);
+
+    // Countdown Timer Effect
+    useEffect(() => {
+        if (!expiresAt || (status !== 'active' && status !== 'extended')) {
+            setCountdown(null);
+            return;
+        }
+
+        const updateTimer = () => {
+            const now = new Date().getTime();
+            const expiry = new Date(expiresAt).getTime();
+            const diff = expiry - now;
+
+            if (diff <= 0) {
+                setCountdown('0:00');
+                setStatus('ended');
+                return;
+            }
+
+            const minutes = Math.floor(diff / (1000 * 60));
+            const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+            setCountdown(`${minutes}:${seconds < 10 ? '0' : ''}${seconds}`);
+        };
+
+        updateTimer();
+        const intervalId = setInterval(updateTimer, 1000);
+
+        return () => clearInterval(intervalId);
+    }, [expiresAt, status]);
 
     // Scroll to bottom when new messages arrive
     useEffect(() => {
@@ -233,24 +285,34 @@ export default function BlindDatingModal({ visible, onClose, coins, onCoinsChang
         }
     };
 
-    const handleExtend = async () => {
+    const handleChoice = async (choice: 'reveal' | 'chat' | 'decline') => {
         if (!sessionId) return;
 
-        if (coins < 100) {
-            Alert.alert('Insufficient Coins', 'You need 100 coins to extend the session.');
+        let cost = 0;
+        if (choice === 'reveal') cost = 70;
+        else if (choice === 'chat') cost = partnerRevealed ? 100 : 200;
+
+        if (cost > 0 && coins < cost) {
+            Alert.alert('Insufficient Coins', `You need ${cost} coins.`);
             return;
         }
 
         try {
-            const res = await authAPI.extendBlindSession(sessionId);
+            const res = await authAPI.recordBlindChoice(sessionId, choice);
             if (res.data.success) {
-                setStatus('extended');
-                setPartnerProfile(res.data.partnerProfile);
+                setUserChoice(choice);
+                if (res.data.partnerProfile) {
+                    setPartnerProfile(res.data.partnerProfile);
+                    setPartnerRevealed(true);
+                }
                 onCoinsChange(res.data.coins);
-                Alert.alert('Extended!', 'You can now see their profile and chat for 10 more minutes!');
+                if (res.data.status === 'extended') {
+                    Alert.alert('Mutual Match!', 'You both agreed to chat! The conversation is now permanent in your Vibe tab.');
+                    setStatus('extended');
+                }
             }
         } catch (error: any) {
-            Alert.alert('Error', error.message || 'Failed to extend session');
+            Alert.alert('Error', error.message || 'Failed to record choice');
         }
     };
 
@@ -272,6 +334,9 @@ export default function BlindDatingModal({ visible, onClose, coins, onCoinsChang
         setMessages([]);
         setInputText('');
         setPartnerProfile(null);
+        setUserChoice('none');
+        setPartnerChoice('none');
+        setPartnerRevealed(false);
     };
 
     const handleClose = async () => {
@@ -353,6 +418,15 @@ export default function BlindDatingModal({ visible, onClose, coins, onCoinsChang
                 <TouchableOpacity onPress={handleClose} style={styles.closeButton}>
                     <X size={24} color="#6B7280" />
                 </TouchableOpacity>
+            </View>
+
+            {/* Session Countdown */}
+            <View style={styles.countdownStrip}>
+                <Clock size={16} color="#8B5CF6" />
+                <Text style={styles.countdownLabel}>Time Remaining:</Text>
+                <Text style={[styles.countdownValue, (countdown?.startsWith('0:') || countdown?.startsWith('1:')) && { color: '#EF4444' }]}>
+                    {countdown || '5:00'}
+                </Text>
             </View>
 
             {/* Partner Profile Preview (when extended) */}
@@ -444,28 +518,46 @@ export default function BlindDatingModal({ visible, onClose, coins, onCoinsChang
                 Your 5-minute session has ended. Want to continue the conversation?
             </Text>
 
-            <TouchableOpacity style={styles.extendButton} onPress={handleExtend}>
-                <LinearGradient
-                    colors={['#EC4899', '#8B5CF6']}
-                    style={styles.extendGradient}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 0 }}
-                >
-                    <Sparkles size={20} color="white" />
-                    <Text style={styles.extendButtonText}>Extend & Reveal</Text>
-                    <View style={styles.coinBadge}>
-                        <Coins size={14} color="#F59E0B" />
-                        <Text style={styles.coinBadgeText}>100</Text>
-                    </View>
-                </LinearGradient>
-            </TouchableOpacity>
+            {userChoice === 'none' || userChoice === 'reveal' ? (
+                <View style={styles.choiceGrid}>
+                    <TouchableOpacity
+                        style={[styles.choiceBtn, userChoice === 'reveal' && styles.choiceBtnDisabled]}
+                        onPress={() => handleChoice('reveal')}
+                        disabled={userChoice === 'reveal'}
+                    >
+                        <Eye size={20} color="#8B5CF6" />
+                        <Text style={styles.choiceBtnText}>{userChoice === 'reveal' ? 'Identity Revealed' : 'Reveal Identity'}</Text>
+                        <View style={styles.choiceCost}>
+                            <Coins size={12} color="#F59E0B" />
+                            <Text style={styles.choiceCostText}>70</Text>
+                        </View>
+                    </TouchableOpacity>
 
-            <Text style={styles.extendHint}>
-                Get 10 more minutes + see their profile
-            </Text>
+                    <TouchableOpacity style={styles.choiceBtn} onPress={() => handleChoice('chat')}>
+                        <Sparkles size={20} color="#EC4899" />
+                        <Text style={styles.choiceBtnText}>Reveal & Chat</Text>
+                        <View style={styles.choiceCost}>
+                            <Coins size={12} color="#F59E0B" />
+                            <Text style={styles.choiceCostText}>{userChoice === 'reveal' ? '100' : '170'}</Text>
+                        </View>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity style={[styles.choiceBtn, { backgroundColor: '#F3F4F6' }]} onPress={() => handleChoice('decline')}>
+                        <X size={20} color="#6B7280" />
+                        <Text style={[styles.choiceBtnText, { color: '#374151' }]}>Decline</Text>
+                    </TouchableOpacity>
+                </View>
+            ) : (
+                <View style={styles.waitingContainer}>
+                    <ActivityIndicator size="small" color="#8B5CF6" />
+                    <Text style={styles.waitingText}>
+                        {partnerChoice === 'none' ? 'Waiting for partner to decide...' : 'Processing mutual agreement...'}
+                    </Text>
+                </View>
+            )}
 
             <TouchableOpacity style={styles.endChatButton} onPress={handleEndSession}>
-                <Text style={styles.endChatButtonText}>End Chat</Text>
+                <Text style={styles.endChatButtonText}>Quit & Delete</Text>
             </TouchableOpacity>
         </View>
     );
@@ -729,6 +821,27 @@ const styles = StyleSheet.create({
     closeButton: {
         padding: 4,
     },
+    countdownStrip: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 16,
+        paddingVertical: 8,
+        backgroundColor: '#F5F3FF',
+        borderBottomWidth: 1,
+        borderColor: '#EDE9FE',
+        gap: 8,
+    },
+    countdownLabel: {
+        fontSize: 12,
+        fontWeight: '600',
+        color: '#6B7280',
+    },
+    countdownValue: {
+        fontSize: 14,
+        fontWeight: 'bold',
+        color: '#8B5CF6',
+        fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+    },
     profileRevealCard: {
         margin: 16,
         padding: 12,
@@ -904,5 +1017,60 @@ const styles = StyleSheet.create({
     endChatButtonText: {
         fontSize: 16,
         color: '#6B7280',
+    },
+    choiceGrid: {
+        width: '100%',
+        gap: 12,
+        marginBottom: 24,
+    },
+    choiceBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#F5F3FF',
+        padding: 16,
+        borderRadius: 16,
+        gap: 12,
+        borderWidth: 1,
+        borderColor: '#EDE9FE',
+    },
+    choiceBtnDisabled: {
+        opacity: 0.6,
+        backgroundColor: '#F9FAFB',
+    },
+    choiceBtnText: {
+        flex: 1,
+        fontSize: 16,
+        fontWeight: 'bold',
+        color: '#8B5CF6',
+    },
+    choiceCost: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: 'white',
+        paddingHorizontal: 10,
+        paddingVertical: 4,
+        borderRadius: 12,
+        gap: 4,
+        borderWidth: 1,
+        borderColor: '#F3F4F6',
+    },
+    choiceCostText: {
+        fontSize: 14,
+        fontWeight: 'bold',
+        color: '#F59E0B',
+    },
+    waitingContainer: {
+        alignItems: 'center',
+        gap: 12,
+        padding: 24,
+        backgroundColor: '#F9FAFB',
+        borderRadius: 16,
+        width: '100%',
+        marginBottom: 24,
+    },
+    waitingText: {
+        fontSize: 15,
+        color: '#6B7280',
+        fontStyle: 'italic',
     },
 });

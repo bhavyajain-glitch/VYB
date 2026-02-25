@@ -8,8 +8,7 @@ import Animated, { FadeIn, SlideInUp, useAnimatedStyle, useSharedValue, withRepe
 
 const LIME = '#D4FF00';
 
-// API URL - same as your main API
-const API_URL = 'https://campusconnect-api-nx9k.onrender.com/api';
+import { API_URL } from '../services/api';
 
 interface UpdateInfo {
   type: 'ota' | 'apk';
@@ -73,8 +72,8 @@ export default function UpdateChecker() {
     if (showModal || processing) return;
 
     try {
-      // 1. Check for OTA Updates first (if not in development)
-      if (!__DEV__) {
+      // 1. Check for OTA Updates first (if not in development and updates are enabled)
+      if (!__DEV__ && Updates.isEnabled) {
         const update = await Updates.checkForUpdateAsync();
         if (update.isAvailable) {
           setUpdateInfo({

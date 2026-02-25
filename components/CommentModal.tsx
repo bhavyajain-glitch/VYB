@@ -1,7 +1,7 @@
 import { View, Text, Image, TouchableOpacity, ScrollView, TextInput, StyleSheet, ActivityIndicator, KeyboardAvoidingView, Platform, Modal, Dimensions } from 'react-native';
 import { useState, useEffect } from 'react';
 import { X, Send, Heart, MessageCircle } from 'lucide-react-native';
-import { authAPI } from '../app/services/api';
+import { authAPI } from '../services/api';
 import { getAvatarUrl, getPostImageUrl } from '../utils/imageUtils';
 
 const LIME = '#D4FF00';
@@ -22,12 +22,12 @@ export default function CommentModal({ visible, onClose, postId }: CommentModalP
 
   useEffect(() => {
     if (visible && postId) {
-        fetchPost();
+      fetchPost();
     } else {
-        // Reset state on close
-        setPost(null);
-        setComments([]);
-        setLoading(true);
+      // Reset state on close
+      setPost(null);
+      setComments([]);
+      setLoading(true);
     }
   }, [visible, postId]);
 
@@ -61,70 +61,70 @@ export default function CommentModal({ visible, onClose, postId }: CommentModalP
 
   return (
     <Modal visible={visible} animationType="slide" transparent presentationStyle="overFullScreen">
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.overlay}>
-            <TouchableOpacity style={styles.backdrop} onPress={onClose} activeOpacity={1} />
-            
-            <View style={styles.modalContent}>
-                {/* Header */}
-                <View style={styles.header}>
-                    <Text style={styles.headerTitle}>Comments</Text>
-                    <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-                        <X size={24} color="black" />
-                    </TouchableOpacity>
-                </View>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.overlay}>
+        <TouchableOpacity style={styles.backdrop} onPress={onClose} activeOpacity={1} />
 
-                {loading ? (
-                    <View style={styles.centered}><ActivityIndicator color={LIME} size="large" /></View> 
-                ) : (
-                    <>
-                        <ScrollView contentContainerStyle={styles.scrollContent}>
-                             {/* Minimal Post Summary */}
-                             {post && (
-                                <View style={styles.postSummary}>
-                                    <Image source={{ uri: getPostImageUrl(post.image) }} style={styles.tinyImage} />
-                                    <View style={{ flex: 1 }}>
-                                        <Text style={styles.summaryText} numberOfLines={2}>
-                                            <Text style={styles.bold}>{post.user?.username}</Text> {post.caption}
-                                        </Text>
-                                    </View>
-                                </View>
-                             )}
+        <View style={styles.modalContent}>
+          {/* Header */}
+          <View style={styles.header}>
+            <Text style={styles.headerTitle}>Comments</Text>
+            <TouchableOpacity onPress={onClose} style={styles.closeButton}>
+              <X size={24} color="black" />
+            </TouchableOpacity>
+          </View>
 
-                            {/* Comments List */}
-                            <View style={styles.commentsList}>
-                                {comments.length === 0 ? (
-                                    <Text style={styles.emptyText}>No comments yet. Say something!</Text>
-                                ) : (
-                                    comments.map((c, i) => (
-                                        <View key={i} style={styles.commentItem}>
-                                            <Image source={{ uri: getAvatarUrl(c.user?.profileImage) }} style={styles.commentAvatar} />
-                                            <View style={styles.commentBubble}>
-                                                <Text style={styles.commentUsername}>{c.user?.username || 'User'}</Text>
-                                                <Text style={styles.commentText}>{c.text}</Text>
-                                            </View>
-                                        </View>
-                                    ))
-                                )}
-                            </View>
-                        </ScrollView>
-
-                        {/* Input */}
-                        <View style={styles.inputContainer}>
-                            <TextInput 
-                                value={newComment}
-                                onChangeText={setNewComment}
-                                placeholder="Add a comment..."
-                                style={styles.input}
-                                placeholderTextColor="#9CA3AF"
-                            />
-                            <TouchableOpacity onPress={handleSend} disabled={sending || !newComment.trim()}>
-                                {sending ? <ActivityIndicator size="small" color={LIME} /> : <Send size={24} color={newComment.trim() ? LIME : '#E5E7EB'} />}
-                            </TouchableOpacity>
-                        </View>
-                    </>
+          {loading ? (
+            <View style={styles.centered}><ActivityIndicator color={LIME} size="large" /></View>
+          ) : (
+            <>
+              <ScrollView contentContainerStyle={styles.scrollContent}>
+                {/* Minimal Post Summary */}
+                {post && (
+                  <View style={styles.postSummary}>
+                    <Image source={{ uri: getPostImageUrl(post.image) }} style={styles.tinyImage} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.summaryText} numberOfLines={2}>
+                        <Text style={styles.bold}>{post.user?.username}</Text> {post.caption}
+                      </Text>
+                    </View>
+                  </View>
                 )}
-            </View>
-        </KeyboardAvoidingView>
+
+                {/* Comments List */}
+                <View style={styles.commentsList}>
+                  {comments.length === 0 ? (
+                    <Text style={styles.emptyText}>No comments yet. Say something!</Text>
+                  ) : (
+                    comments.map((c, i) => (
+                      <View key={i} style={styles.commentItem}>
+                        <Image source={{ uri: getAvatarUrl(c.user?.profileImage) }} style={styles.commentAvatar} />
+                        <View style={styles.commentBubble}>
+                          <Text style={styles.commentUsername}>{c.user?.username || 'User'}</Text>
+                          <Text style={styles.commentText}>{c.text}</Text>
+                        </View>
+                      </View>
+                    ))
+                  )}
+                </View>
+              </ScrollView>
+
+              {/* Input */}
+              <View style={styles.inputContainer}>
+                <TextInput
+                  value={newComment}
+                  onChangeText={setNewComment}
+                  placeholder="Add a comment..."
+                  style={styles.input}
+                  placeholderTextColor="#9CA3AF"
+                />
+                <TouchableOpacity onPress={handleSend} disabled={sending || !newComment.trim()}>
+                  {sending ? <ActivityIndicator size="small" color={LIME} /> : <Send size={24} color={newComment.trim() ? LIME : '#E5E7EB'} />}
+                </TouchableOpacity>
+              </View>
+            </>
+          )}
+        </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
@@ -133,7 +133,7 @@ const styles = StyleSheet.create({
   overlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)' },
   backdrop: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
   modalContent: { backgroundColor: 'white', borderTopLeftRadius: 24, borderTopRightRadius: 24, height: '80%', width: '100%', maxWidth: 600, alignSelf: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: -2 }, shadowOpacity: 0.1, shadowRadius: 10, elevation: 5 },
-  
+
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 16, borderBottomWidth: 1, borderColor: '#F3F4F6' },
   headerTitle: { fontSize: 16, fontWeight: 'bold' },
   closeButton: { position: 'absolute', right: 16, top: 16 },

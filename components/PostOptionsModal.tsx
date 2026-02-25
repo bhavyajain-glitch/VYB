@@ -1,6 +1,6 @@
 import { View, Text, Modal, TouchableOpacity, StyleSheet, TouchableWithoutFeedback, Alert, Platform } from 'react-native';
 import { Flag, Ban, X, Trash } from 'lucide-react-native';
-import { authAPI } from '../app/services/api';
+import { authAPI } from '../services/api';
 
 interface PostOptionsModalProps {
   visible: boolean;
@@ -19,60 +19,62 @@ export default function PostOptionsModal({ visible, onClose, post, onBlockUser, 
   const handleReport = () => {
     // In a real app, this would open a report form or call an API
     if (Platform.OS === 'web') {
-        window.alert('Report submitted. We will review this post.');
+      window.alert('Report submitted. We will review this post.');
     } else {
-        Alert.alert('Reported', 'We will review this post shortly.');
+      Alert.alert('Reported', 'We will review this post shortly.');
     }
     onClose();
   };
 
   const handleDelete = () => {
-      if (Platform.OS === 'web') {
-          if (confirm('Are you sure you want to delete this post?')) {
+    if (Platform.OS === 'web') {
+      if (confirm('Are you sure you want to delete this post?')) {
+        onDeletePost?.(post._id);
+        onClose();
+      }
+    } else {
+      Alert.alert(
+        'Delete Post',
+        'Are you sure you want to delete this post?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Delete', style: 'destructive', onPress: () => {
               onDeletePost?.(post._id);
               onClose();
+            }
           }
-      } else {
-          Alert.alert(
-              'Delete Post',
-              'Are you sure you want to delete this post?',
-              [
-                  { text: 'Cancel', style: 'cancel' },
-                  { text: 'Delete', style: 'destructive', onPress: () => {
-                      onDeletePost?.(post._id);
-                      onClose();
-                  }}
-              ]
-          );
-      }
+        ]
+      );
+    }
   };
 
   const handleBlock = async () => {
     const confirmBlock = () => {
-        authAPI.blockUser(post.user._id)
-            .then(() => {
-                 onBlockUser(post.user._id);
-                 onClose();
-            })
-            .catch((err) => {
-                console.error(err);
-                if (Platform.OS !== 'web') Alert.alert('Error', 'Failed to block user');
-            });
+      authAPI.blockUser(post.user._id)
+        .then(() => {
+          onBlockUser(post.user._id);
+          onClose();
+        })
+        .catch((err) => {
+          console.error(err);
+          if (Platform.OS !== 'web') Alert.alert('Error', 'Failed to block user');
+        });
     };
 
     if (Platform.OS === 'web') {
-        if (confirm(`Are you sure you want to block ${post.user.username}? Their posts will no longer be visible to you.`)) {
-            confirmBlock();
-        }
+      if (confirm(`Are you sure you want to block ${post.user.username}? Their posts will no longer be visible to you.`)) {
+        confirmBlock();
+      }
     } else {
-        Alert.alert(
-            'Block User',
-            `Are you sure you want to block ${post.user.username}? Their posts will no longer be visible to you.`,
-            [
-                { text: 'Cancel', style: 'cancel' },
-                { text: 'Block', style: 'destructive', onPress: confirmBlock }
-            ]
-        );
+      Alert.alert(
+        'Block User',
+        `Are you sure you want to block ${post.user.username}? Their posts will no longer be visible to you.`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Block', style: 'destructive', onPress: confirmBlock }
+        ]
+      );
     }
   };
 
@@ -80,38 +82,38 @@ export default function PostOptionsModal({ visible, onClose, post, onBlockUser, 
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <TouchableWithoutFeedback onPress={onClose}>
         <View style={styles.overlay}>
-            <TouchableWithoutFeedback>
-                <View style={styles.modalContent}>
-                    <View style={styles.dragIndicator} />
-                    
-                    <Text style={styles.headerTitle}>Options</Text>
+          <TouchableWithoutFeedback>
+            <View style={styles.modalContent}>
+              <View style={styles.dragIndicator} />
 
-                    {isOwner ? (
-                        <TouchableOpacity style={styles.optionItem} onPress={handleDelete}>
-                            <Trash size={20} color="#EF4444" />
-                            <Text style={[styles.optionText, { color: '#EF4444' }]}>Delete Post</Text>
-                        </TouchableOpacity>
-                    ) : (
-                        <>
-                            <TouchableOpacity style={styles.optionItem} onPress={handleReport}>
-                                <Flag size={20} color="#EF4444" />
-                                <Text style={[styles.optionText, { color: '#EF4444' }]}>Report Post</Text>
-                            </TouchableOpacity>
+              <Text style={styles.headerTitle}>Options</Text>
 
-                            <TouchableOpacity style={styles.optionItem} onPress={handleBlock}>
-                                <Ban size={20} color="#111827" />
-                                <Text style={styles.optionText}>Block {post.user?.username || 'User'}</Text>
-                            </TouchableOpacity>
-                        </>
-                    )}
+              {isOwner ? (
+                <TouchableOpacity style={styles.optionItem} onPress={handleDelete}>
+                  <Trash size={20} color="#EF4444" />
+                  <Text style={[styles.optionText, { color: '#EF4444' }]}>Delete Post</Text>
+                </TouchableOpacity>
+              ) : (
+                <>
+                  <TouchableOpacity style={styles.optionItem} onPress={handleReport}>
+                    <Flag size={20} color="#EF4444" />
+                    <Text style={[styles.optionText, { color: '#EF4444' }]}>Report Post</Text>
+                  </TouchableOpacity>
 
-                    <View style={styles.divider} />
+                  <TouchableOpacity style={styles.optionItem} onPress={handleBlock}>
+                    <Ban size={20} color="#111827" />
+                    <Text style={styles.optionText}>Block {post.user?.username || 'User'}</Text>
+                  </TouchableOpacity>
+                </>
+              )}
 
-                    <TouchableOpacity style={styles.cancelButton} onPress={onClose}>
-                        <Text style={styles.cancelText}>Cancel</Text>
-                    </TouchableOpacity>
-                </View>
-            </TouchableWithoutFeedback>
+              <View style={styles.divider} />
+
+              <TouchableOpacity style={styles.cancelButton} onPress={onClose}>
+                <Text style={styles.cancelText}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          </TouchableWithoutFeedback>
         </View>
       </TouchableWithoutFeedback>
     </Modal>

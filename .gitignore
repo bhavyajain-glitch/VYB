@@ -31,3 +31,14 @@ Thumbs.db
 
 expo-env.d.ts
 # @end expo-cli
+
+# Firebase Admin SDK credentials (SENSITIVE - DO NOT COMMIT)
+*-firebase-adminsdk-*.json
+vybe-22761-firebase-adminsdk-fbsvc-*.json
+
+# Credentials
+credentials.json
+
+# APK build files
+*.apk
+

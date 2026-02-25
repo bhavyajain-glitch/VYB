@@ -2,7 +2,7 @@ import { View, Text, Image, TouchableOpacity, ScrollView, TextInput, StyleSheet,
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { useState, useEffect } from 'react';
 import { ArrowLeft, Send, Heart, MessageCircle } from 'lucide-react-native';
-import { authAPI } from '../services/api';
+import { authAPI } from '../../services/api';
 
 const LIME = '#D4FF00';
 

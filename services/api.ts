@@ -1,3 +1,4 @@
+import Constants from 'expo-constants';
 import { Platform, Alert } from 'react-native';
 
 // ======= AUTOMATIC API SELECTION =======
@@ -5,15 +6,21 @@ import { Platform, Alert } from 'react-native';
 export const USE_LOCAL_API = __DEV__;
 // ==============================================
 
+// Helper to get local IP for development
+const getLocalIp = () => {
+  // Constants.expoConfig.hostUri gives the IP:Port of the dev machine
+  const debuggerHost = Constants.expoConfig?.hostUri;
+  if (!debuggerHost) return 'localhost';
+  return debuggerHost.split(':')[0];
+};
+
 // API URLs
-const LOCAL_API_URL = Platform.OS === 'android'
-  ? 'http://10.0.2.2:5000/api'    // Android Emulator
-  : 'http://localhost:5000/api';  // iOS Simulator / Web
+const LOCAL_API_URL = `http://${getLocalIp()}:5000/api`;
 
 const PRODUCTION_API_URL = 'https://campusconnect-api-nx9k.onrender.com/api';
 
 // Select API based on toggle
-const API_URL = USE_LOCAL_API ? LOCAL_API_URL : PRODUCTION_API_URL;
+export const API_URL = USE_LOCAL_API ? LOCAL_API_URL : PRODUCTION_API_URL;
 
 const headers = {
   'Content-Type': 'application/json',
@@ -38,7 +45,10 @@ const request = async (endpoint: string, method: string, body?: any, retryCount 
     const authHeaders = { ...headers, Authorization: token ? `Bearer ${token}` : '' };
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+    const timeoutId = setTimeout(() => {
+      console.warn(`[API] Request timed out after 60s: ${method} ${endpoint}`);
+      controller.abort();
+    }, 60000); // 60 second timeout (increased for cold starts)
 
     const response = await fetch(`${API_URL}${endpoint}`, {
       method,
@@ -54,7 +64,7 @@ const request = async (endpoint: string, method: string, body?: any, retryCount 
     try {
       data = JSON.parse(text);
     } catch (e) {
-      console.error('API Response parsing failed:', text);
+      console.error(`[API] Response parsing failed for ${endpoint}:`, text);
       throw new Error(`Server Error: ${response.status} ${response.statusText}`);
     }
 
@@ -64,22 +74,31 @@ const request = async (endpoint: string, method: string, body?: any, retryCount 
 
     return { data };
   } catch (error: any) {
-    console.error('API Error:', error);
-
-    // Check if it's a network/timeout error and we can retry
+    // Determine if this was an actual timeout or just a generic abort
+    const isTimeout = error.name === 'AbortError' && !error.message?.includes('user aborted');
     const isNetworkError = error.name === 'AbortError' ||
       error.message?.includes('Network request failed') ||
       error.message?.includes('fetch');
 
+    console.error(`[API Error] ${method} ${endpoint}:`, {
+      name: error.name,
+      message: error.message,
+      isTimeout,
+      retryCount
+    });
+
     if (isNetworkError && retryCount < MAX_RETRIES) {
-      console.log(`Retrying request... Attempt ${retryCount + 2}/${MAX_RETRIES + 1}`);
+      console.log(`[API] Retrying ${endpoint}... Attempt ${retryCount + 2}/${MAX_RETRIES + 1}`);
       await sleep(RETRY_DELAY);
       return request(endpoint, method, body, retryCount + 1);
     }
 
     // Give user-friendly error message
     if (isNetworkError) {
-      throw new Error('Server is starting up. Please wait a moment and try again.');
+      const msg = isTimeout
+        ? 'Request timed out. Please check your connection.'
+        : 'Server is starting up or temporarily unavailable. Please try again.';
+      throw new Error(msg);
     }
 
     throw error;
@@ -87,9 +106,12 @@ const request = async (endpoint: string, method: string, body?: any, retryCount 
 };
 
 export const authAPI = {
-  sendOtp: (phoneNumber: string) => request('/auth/send-otp', 'POST', { phoneNumber }),
-  verifyOtp: (phoneNumber: string, otp: string) => request('/auth/verify-otp', 'POST', { phoneNumber, otp }),
-  googleLogin: (idToken: string) => request('/auth/google', 'POST', { idToken }),
+  sendOtp: (phoneNumber?: string, email?: string) => request('/auth/send-otp', 'POST', { phoneNumber, email }),
+  verifyOtp: (phoneNumber?: string, email?: string, otp?: string) => request('/auth/verify-otp', 'POST', { phoneNumber, email, otp }),
+  sendCollegeVerify: (email: string) => request('/auth/college-verify/send', 'POST', { email }),
+  verifyCollegeEmail: (email: string, otp: string) => request('/auth/college-verify/verify', 'POST', { email, otp }),
+  registerPushToken: (token: string) => request('/notifications/register', 'POST', { token }),
+  getNotifications: (page = 1) => request(`/notifications?page=${page}`, 'GET'),
   updateProfile: (data: any) => request('/users/profile', 'PATCH', data),
   getMe: () => request('/users/me', 'GET'),
   deleteAccount: () => request('/users/profile', 'DELETE'),
@@ -98,9 +120,12 @@ export const authAPI = {
   getRecommendations: () => request('/dating/recommendations', 'GET'),
   switchMatch: (userId: string) => request(`/dating/match/${userId}`, 'POST'),
   buyCoins: (amount: number) => request('/dating/buy-coins', 'POST', { amount }),
+  createPaymentOrder: (amount: number, price: number, packType: string = 'coins') => request('/payment/create-order', 'POST', { amount, price, packType }),
+  verifyPayment: (paymentData: any) => request('/payment/verify-payment', 'POST', paymentData),
   acceptDatingTerms: () => request('/dating/accept-terms', 'POST'),
   updateDatingProfile: (data: any) => request('/dating/profile', 'PATCH', data),
   getDatingProfile: () => request('/dating/profile', 'GET'),
+  resetDatingProfile: () => request('/users/profile/reset-dating', 'POST'),
 
   // Likes System
   getLikesStatus: () => request('/likes/my-status', 'GET'),
@@ -110,9 +135,11 @@ export const authAPI = {
   startChatFromLike: (likeId: string) => request(`/likes/start-chat/${likeId}`, 'POST'),
   directChat: (likeId: string) => request(`/likes/direct-chat/${likeId}`, 'POST'),
   declineLike: (likeId: string) => request(`/likes/decline/${likeId}`, 'POST'),
+  passUser: (userId: string) => request(`/likes/pass/${userId}`, 'POST'),
   buyLikes: () => request('/likes/buy-likes', 'POST'),
   buyChatSlot: () => request('/likes/buy-chat-slot', 'POST'),
   getActiveChats: () => request('/likes/active-chats', 'GET'),
+  unmatchUser: (likeId: string) => request(`/likes/unmatch/${likeId}`, 'POST'),
 
   // Posts
   getPosts: (page: number = 1, limit: number = 10) => request(`/posts?page=${page}&limit=${limit}`, 'GET'),
@@ -128,12 +155,16 @@ export const authAPI = {
   searchUsers: (query: string) => request(`/users/search?q=${query}`, 'GET'),
   getUser: (id: string) => request(`/users/${id}`, 'GET'),
   followUser: (id: string) => request(`/users/${id}/follow`, 'POST'),
-  blockUser: (id: string) => request(`/users/${id}/block`, 'POST'),
+  reportUser: (targetUserId: string, reason: string, details?: string) => request('/users/report', 'POST', { targetUserId, reason, details }),
+  blockUser: (targetUserId: string) => request('/users/block', 'POST', { targetUserId }),
+  unblockUser: (targetUserId: string) => request('/users/unblock', 'POST', { targetUserId }),
   getAllUsers: () => request('/users/admin/all', 'GET'),
 
   // Chat
   sendMessage: (receiverId: string, text: string) => request('/chat/send', 'POST', { receiverId, text }),
   getMessages: (userId: string) => request(`/chat/${userId}`, 'GET'),
+  markMessagesRead: (userId: string) => request(`/chat/read/${userId}`, 'PUT'),
+  deleteConversation: (userId: string) => request(`/chat/${userId}`, 'DELETE'),
 
   // Blind Dating
   joinBlindQueue: () => request('/blind/join', 'POST'),
@@ -142,6 +173,7 @@ export const authAPI = {
   sendBlindMessage: (sessionId: string, text: string) => request(`/blind/session/${sessionId}/message`, 'POST', { text }),
   getBlindMessages: (sessionId: string) => request(`/blind/session/${sessionId}/messages`, 'GET'),
   extendBlindSession: (sessionId: string) => request(`/blind/session/${sessionId}/extend`, 'POST'),
+  recordBlindChoice: (sessionId: string, choice: string) => request(`/blind/session/${sessionId}/choice`, 'POST', { choice }),
   endBlindSession: (sessionId: string) => request(`/blind/session/${sessionId}/end`, 'POST'),
 
   // Upload (Cloudinary)

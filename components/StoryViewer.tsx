@@ -2,7 +2,7 @@ import { View, Text, Image, TouchableOpacity, StyleSheet, Dimensions, Modal, Sta
 import { useState, useEffect, useRef } from 'react';
 import { X, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react-native';
 import Animated, { useSharedValue, useAnimatedStyle, withTiming, runOnJS } from 'react-native-reanimated';
-import { authAPI } from '../app/services/api';
+import { authAPI } from '../services/api';
 import { getAvatarUrl } from '../utils/imageUtils';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -119,7 +119,7 @@ export default function StoryViewer({ visible, storyGroups, initialGroupIndex, o
     <Modal visible={visible} animationType="fade" statusBarTranslucent>
       <View style={styles.container}>
         <StatusBar barStyle="light-content" />
-        
+
         {/* Story Image */}
         <Image source={{ uri: currentStory.image }} style={styles.storyImage} resizeMode="cover" />
 
@@ -129,13 +129,13 @@ export default function StoryViewer({ visible, storyGroups, initialGroupIndex, o
           <View style={styles.progressContainer}>
             {currentGroup.stories.map((_, index) => (
               <View key={index} style={styles.progressBar}>
-                <Animated.View 
+                <Animated.View
                   style={[
                     styles.progressFill,
-                    index < currentStoryIndex ? { width: '100%' } : 
-                    index === currentStoryIndex ? progressStyle : 
-                    { width: '0%' }
-                  ]} 
+                    index < currentStoryIndex ? { width: '100%' } :
+                      index === currentStoryIndex ? progressStyle :
+                        { width: '0%' }
+                  ]}
                 />
               </View>
             ))}
@@ -151,14 +151,14 @@ export default function StoryViewer({ visible, storyGroups, initialGroupIndex, o
               </View>
             </View>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
-                {currentGroup.isOwnStory && (
-                    <TouchableOpacity onPress={() => onClose && onClose('delete', currentStory._id)}>
-                        <Trash2 size={24} color="white" />
-                    </TouchableOpacity>
-                )}
-                <TouchableOpacity onPress={() => onClose && onClose('close')} style={styles.closeButton}>
-                    <X size={28} color="white" />
+              {currentGroup.isOwnStory && (
+                <TouchableOpacity onPress={() => onClose && onClose('delete', currentStory._id)}>
+                  <Trash2 size={24} color="white" />
                 </TouchableOpacity>
+              )}
+              <TouchableOpacity onPress={() => onClose && onClose('close')} style={styles.closeButton}>
+                <X size={28} color="white" />
+              </TouchableOpacity>
             </View>
           </View>
 

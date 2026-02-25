@@ -6,7 +6,7 @@ import Animated, { FadeIn, FadeInDown, SlideInRight, SlideInLeft } from 'react-n
 import { LinearGradient } from 'expo-linear-gradient';
 import * as ImagePicker from 'expo-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { authAPI } from './services/api';
+import { authAPI } from '../services/api';
 
 const { width } = Dimensions.get('window');
 const PINK = '#EC4899';
@@ -36,8 +36,12 @@ export default function DatingProfileSetup() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isEditMode, setIsEditMode] = useState(false);
+  const [userName, setUserName] = useState('');
+  const [userAge, setUserAge] = useState<number | null>(null);
 
   // Form state
+  const [nameInput, setNameInput] = useState('');
+  const [datingAgeInput, setDatingAgeInput] = useState('');
   const [gender, setGender] = useState('');
   const [lookingFor, setLookingFor] = useState('');
   const [height, setHeight] = useState('');
@@ -73,6 +77,10 @@ export default function DatingProfileSetup() {
           if (profile.datingBio) setBio(profile.datingBio);
           if (profile.datingInterests) setInterests(profile.datingInterests);
           if (profile.datingPhotos) setPhotos(profile.datingPhotos);
+
+          // Set locked fields
+          setUserName(profile.fullName || '');
+          setUserAge(profile.datingAge || profile.age || null);
         }
       } catch (error) {
         console.error('Error loading existing profile:', error);
@@ -126,7 +134,9 @@ export default function DatingProfileSetup() {
 
   const canProceed = () => {
     switch (step) {
-      case 1: return gender && lookingFor && height;
+      case 1:
+        const basicsOk = (!userName ? nameInput : true) && (!userAge ? datingAgeInput : true);
+        return basicsOk && gender && lookingFor && height;
       case 2: return hometown && college && course && intentions.length > 0;
       case 3: return bio.length >= 20 && interests.length >= 3 && photos.length >= 1;
       default: return false;
@@ -138,7 +148,7 @@ export default function DatingProfileSetup() {
 
     setIsSubmitting(true);
     try {
-      const datingProfile = {
+      const datingProfile: any = {
         datingGender: gender,
         datingLookingFor: lookingFor,
         datingHeight: height,
@@ -151,6 +161,13 @@ export default function DatingProfileSetup() {
         datingPhotos: photos,
         datingProfileComplete: true,
       };
+
+      if (!userAge && datingAgeInput) {
+        datingProfile.datingAge = parseInt(datingAgeInput);
+      }
+      if (!userName && nameInput) {
+        datingProfile.fullName = nameInput;
+      }
 
       await authAPI.updateDatingProfile(datingProfile);
       await AsyncStorage.setItem('datingProfileComplete', 'true');
@@ -252,6 +269,57 @@ export default function DatingProfileSetup() {
           <Animated.View entering={FadeIn} style={styles.stepContainer}>
             <Text style={styles.stepTitle}>Let's start with the basics</Text>
 
+            {/* Locked basics - only show if user has values */}
+            {(userName || userAge) && (
+              <View style={styles.lockedBasicsContainer}>
+                {userName && (
+                  <View style={styles.lockedField}>
+                    <Text style={styles.lockedLabel}>Name (Locked)</Text>
+                    <Text style={styles.lockedValue}>{userName}</Text>
+                  </View>
+                )}
+                {userAge && (
+                  <View style={styles.lockedField}>
+                    <Text style={styles.lockedLabel}>Age (Locked)</Text>
+                    <Text style={styles.lockedValue}>{userAge}</Text>
+                  </View>
+                )}
+              </View>
+            )}
+
+            {(!userName || !userAge) && (
+              <View style={styles.initialBasicsContainer}>
+                <Text style={[styles.label, { marginBottom: 15 }]}>Completing your basics</Text>
+                {!userName && (
+                  <View style={{ marginBottom: 12 }}>
+                    <Text style={[styles.label, { marginTop: 0, fontSize: 12, color: '#6B7280' }]}>Your Full Name</Text>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="Enter your full name"
+                      value={nameInput}
+                      onChangeText={setNameInput}
+                    />
+                  </View>
+                )}
+                {!userAge && (
+                  <View>
+                    <Text style={[styles.label, { marginTop: 0, fontSize: 12, color: '#6B7280' }]}>Your Age</Text>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="Enter your age"
+                      value={datingAgeInput}
+                      onChangeText={text => setDatingAgeInput(text.replace(/[^0-9]/g, ''))}
+                      keyboardType="number-pad"
+                      maxLength={2}
+                    />
+                  </View>
+                )}
+                <View style={[styles.divider, { marginTop: 20 }]} />
+              </View>
+            )}
+
+            <View style={styles.divider} />
+
             <Text style={styles.label}>I am a...</Text>
             <View style={styles.optionsRow}>
               {GENDER_OPTIONS.map(option => (
@@ -294,6 +362,7 @@ export default function DatingProfileSetup() {
         {/* Step 2: About You */}
         {step === 2 && (
           <Animated.View entering={FadeIn} style={styles.stepContainer}>
+
             <Text style={styles.stepTitle}>Tell us about yourself</Text>
 
             <Text style={styles.label}>Hometown</Text>
@@ -439,6 +508,43 @@ const styles = StyleSheet.create({
   scrollContent: { padding: 24, paddingBottom: 120, maxWidth: MAX_WIDTH, alignSelf: 'center', width: '100%' },
   stepContainer: {},
   stepTitle: { fontSize: 24, fontWeight: 'bold', color: '#111827', marginBottom: 24 },
+
+  lockedBasicsContainer: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 20,
+    backgroundColor: '#F3F4F6',
+    padding: 16,
+    borderRadius: 12,
+  },
+  lockedField: {
+    flex: 1,
+  },
+  lockedLabel: {
+    fontSize: 11,
+    color: '#6B7280',
+    fontWeight: 'bold',
+    textTransform: 'uppercase',
+    marginBottom: 4,
+  },
+  lockedValue: {
+    fontSize: 16,
+    color: '#374151',
+    fontWeight: '600',
+  },
+  divider: {
+    height: 1,
+    backgroundColor: '#E5E7EB',
+    marginBottom: 20,
+  },
+  initialBasicsContainer: {
+    backgroundColor: '#FFFBEB',
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+  },
 
   label: { fontSize: 14, fontWeight: '600', color: '#374151', marginBottom: 10, marginTop: 16 },
   input: { backgroundColor: '#F9FAFB', borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 12, padding: 14, fontSize: 16, color: '#111827' },

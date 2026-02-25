@@ -11,6 +11,7 @@ type UserData = {
     coins: number;
     isAdmin: boolean;
     isBanned?: boolean;
+    isVerified?: boolean;
     createdAt: string;
 };
 
@@ -96,12 +97,59 @@ export default function UserDetail() {
 
     const toggleBan = async () => {
         if (!user) return;
+        if (!window.confirm(`Are you sure you want to ${user.isBanned ? 'unban' : 'ban'} this user?`)) return;
         setActionLoading(true);
         try {
             await api.patch(`/admin/users/${id}`, { isBanned: !user.isBanned, note: 'Toggled ban status' });
             fetchUserData();
         } catch (error) {
             console.error('Failed to update ban status', error);
+        } finally {
+            setActionLoading(false);
+        }
+    };
+
+    const toggleVerify = async () => {
+        if (!user) return;
+        setActionLoading(true);
+        try {
+            await api.patch(`/admin/users/${id}`, { isVerified: !user.isVerified, note: 'Toggled verification status' });
+            fetchUserData();
+        } catch (error) {
+            console.error('Failed to update verification status', error);
+        } finally {
+            setActionLoading(false);
+        }
+    };
+
+    const handleDeleteUser = async () => {
+        if (!user) return;
+        if (!window.confirm('CRITICAL: Are you sure you want to permanently delete this user and all their posts? This cannot be undone.')) return;
+
+        setActionLoading(true);
+        try {
+            await api.delete(`/admin/users/${id}`);
+            navigate('/users');
+        } catch (error) {
+            console.error('Failed to delete user', error);
+            alert('Failed to delete user');
+        } finally {
+            setActionLoading(false);
+        }
+    };
+
+    const handleResetDatingProfile = async () => {
+        if (!user) return;
+        if (!window.confirm('Are you sure you want to reset this user\'s dating profile? They will lose all dating data and matches.')) return;
+
+        setActionLoading(true);
+        try {
+            await api.post(`/admin/users/${id}/reset-dating`);
+            alert('Dating profile reset successfully');
+            fetchUserData();
+        } catch (error) {
+            console.error('Failed to reset dating profile', error);
+            alert('Failed to reset dating profile');
         } finally {
             setActionLoading(false);
         }
@@ -123,7 +171,7 @@ export default function UserDetail() {
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 {/* User Info Card */}
-                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 h-fit">
                     <h3 className="text-lg font-bold text-gray-800 mb-4">User Information</h3>
                     <div className="space-y-3">
                         <div><span className="text-gray-500 text-sm">Name:</span> <span className="font-medium">{user.fullName || 'N/A'}</span></div>
@@ -131,10 +179,11 @@ export default function UserDetail() {
                         <div><span className="text-gray-500 text-sm">Phone:</span> <span className="font-mono">{user.phoneNumber}</span></div>
                         <div><span className="text-gray-500 text-sm">Coins:</span> <span className="font-bold text-amber-600">{user.coins} 🪙</span></div>
                         <div><span className="text-gray-500 text-sm">Joined:</span> <span>{new Date(user.createdAt).toLocaleDateString()}</span></div>
-                        <div className="flex gap-2 mt-4">
+                        <div className="flex flex-wrap gap-2 mt-4">
                             <span className={`px-2 py-1 rounded text-xs font-medium ${user.isAdmin ? 'bg-indigo-100 text-indigo-800' : 'bg-gray-100 text-gray-600'}`}>
                                 {user.isAdmin ? 'Admin' : 'User'}
                             </span>
+                            {user.isVerified && <span className="px-2 py-1 rounded text-xs font-medium bg-green-100 text-green-800">Verified</span>}
                             {user.isBanned && <span className="px-2 py-1 rounded text-xs font-medium bg-red-100 text-red-800">Banned</span>}
                         </div>
                     </div>
@@ -192,16 +241,40 @@ export default function UserDetail() {
                             <button
                                 onClick={toggleBan}
                                 disabled={actionLoading}
-                                className={`flex-1 py-2 rounded-lg font-medium ${user.isBanned ? 'bg-green-500 text-white' : 'bg-red-500 text-white'}`}
+                                className={`flex-1 py-2 rounded-lg font-medium ${user.isBanned ? 'bg-green-500 text-white' : 'bg-orange-500 text-white'}`}
                             >
                                 {user.isBanned ? 'Unban' : 'Ban User'}
+                            </button>
+                        </div>
+
+                        <div className="flex gap-2">
+                            <button
+                                onClick={toggleVerify}
+                                disabled={actionLoading}
+                                className={`flex-1 py-2 rounded-lg font-medium ${user.isVerified ? 'bg-gray-200 text-gray-700' : 'bg-green-500 text-white'}`}
+                            >
+                                {user.isVerified ? 'Unverify' : 'Verify User'}
+                            </button>
+                            <button
+                                onClick={handleResetDatingProfile}
+                                disabled={actionLoading}
+                                className="flex-1 py-2 rounded-lg font-medium bg-rose-500 text-white"
+                            >
+                                Reset Dating
+                            </button>
+                            <button
+                                onClick={handleDeleteUser}
+                                disabled={actionLoading}
+                                className="flex-1 py-2 rounded-lg font-medium bg-red-600 text-white"
+                            >
+                                Delete User
                             </button>
                         </div>
                     </div>
                 </div>
 
                 {/* Activity Logs */}
-                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 lg:col-span-1">
+                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
                     <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
                         <History size={20} /> Activity History
                     </h3>
@@ -210,11 +283,24 @@ export default function UserDetail() {
                             <p className="text-gray-500 text-sm">No activity logs yet.</p>
                         ) : (
                             logs.map((log) => (
-                                <div key={log._id} className="border-l-2 border-blue-300 pl-3 py-1">
-                                    <div className="text-sm font-medium text-gray-800">{log.action.replace(/_/g, ' ')}</div>
+                                <div key={log._id} className={`border-l-2 pl-3 py-2 ${log.action.includes('ADDED') ? 'border-green-400' :
+                                    log.action.includes('DEDUCTED') ? 'border-red-400' : 'border-blue-300'
+                                    }`}>
+                                    <div className="text-sm font-bold text-gray-800 flex justify-between">
+                                        <span>{log.action.replace(/_/g, ' ')}</span>
+                                        {log.details?.amount && (
+                                            <span className={log.action.includes('ADDED') ? 'text-green-600' : 'text-red-600'}>
+                                                {log.action.includes('ADDED') ? '+' : '-'}{log.details.amount} 🪙
+                                            </span>
+                                        )}
+                                    </div>
                                     {log.details && (
-                                        <div className="text-xs text-gray-500">
-                                            {JSON.stringify(log.details).substring(0, 100)}...
+                                        <div className="text-xs text-gray-600 mt-1">
+                                            {log.details.reason && <p className="font-medium italic">"{log.details.reason}"</p>}
+                                            {log.details.price && <p>Price: ₹{log.details.price}</p>}
+                                            {(!log.details.reason && !log.details.price) && (
+                                                <p className="truncate">{JSON.stringify(log.details)}</p>
+                                            )}
                                         </div>
                                     )}
                                     <div className="text-xs text-gray-400 mt-1">

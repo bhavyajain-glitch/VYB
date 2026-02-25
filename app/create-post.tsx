@@ -3,7 +3,7 @@ import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Camera, X, Check, FileText } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
-import { authAPI } from './services/api';
+import { authAPI } from '../services/api';
 
 const LIME = '#D4FF00';
 const { width } = Dimensions.get('window');

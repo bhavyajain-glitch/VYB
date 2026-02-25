@@ -3,194 +3,53 @@ import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { useState, useRef, useEffect } from 'react';
-import { ArrowLeft, Phone } from 'lucide-react-native';
-import { authAPI } from './services/api';
+import { ArrowLeft, Phone, Mail } from 'lucide-react-native';
+import { authAPI } from '../services/api';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { DataPolicyModal } from '../components/DataPolicyModal';
-import * as Google from 'expo-auth-session/providers/google';
-import * as WebBrowser from 'expo-web-browser';
-import { makeRedirectUri } from 'expo-auth-session';
-
 if (Platform.OS === 'web') {
-  WebBrowser.maybeCompleteAuthSession();
+  // Web specific setup if needed
 }
 
 const LIME = '#D4FF00';
 const { width } = Dimensions.get('window');
 const isSmallScreen = width < 380;
 
-// Google Client IDs (These would normally come from environment variables)
-const GOOGLE_ANDROID_CLIENT_ID = '560227419750-45vcnpoiog5k2unnrc057caaq6s5imp4.apps.googleusercontent.com';
-const GOOGLE_IOS_CLIENT_ID = 'YOUR_IOS_CLIENT_ID_HERE';
-const GOOGLE_WEB_CLIENT_ID = '560227419750-6vpcqgo8l2uopfg9e4j24dq7102dkb5i.apps.googleusercontent.com';
-
-// Netlify production URL for web redirect
-const WEB_REDIRECT_URI = 'https://sparkling-sunflower-b6100e.netlify.app';
 
 export default function AuthScreen() {
   const router = useRouter();
   const [mode, setMode] = useState<'signup' | 'login'>('signup');
   const [step, setStep] = useState<'phone' | 'otp'>('phone');
+  const [loginMethod, setLoginMethod] = useState<'phone' | 'email'>('email');
   const [phoneNumber, setPhoneNumber] = useState('');
+  const [email, setEmail] = useState('');
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const [isLoading, setIsLoading] = useState(false);
   const [showPolicyModal, setShowPolicyModal] = useState(false);
   const [hasAcceptedPolicy, setHasAcceptedPolicy] = useState(false);
   const otpRefs = useRef<(TextInput | null)[]>([]);
 
-  // Explicitly define redirect URI using the Reverse Client ID Scheme
-  // This is required by Google for Android AppAuth to work without "Custom URI scheme not enabled" error.
-  const nativeRedirectUri = makeRedirectUri({
-    scheme: 'com.googleusercontent.apps.560227419750-45vcnpoiog5k2unnrc057caaq6s5imp4',
-    path: 'oauth2redirect'
-  });
 
-  // Debugging: Show the URI we are using
-  useEffect(() => {
-    if (Platform.OS !== 'web') {
-      // Alert.alert("Debug URI", nativeRedirectUri); // Uncomment to debug logic
-    }
-  }, []);
-
-  // Google Login Hook - Use useIdTokenAuthRequest for web redirect flow (avoids popup blocking)
-  const [request, response, promptAsync] = Google.useIdTokenAuthRequest({
-    androidClientId: GOOGLE_ANDROID_CLIENT_ID,
-    iosClientId: GOOGLE_IOS_CLIENT_ID,
-    clientId: GOOGLE_WEB_CLIENT_ID,
-    selectAccount: true,
-    // Use direct redirect on web to avoid popup blocking
-    // Use explicit package-based URI on native to avoid "Custom URI scheme not enabled" error
-    redirectUri: Platform.OS === 'web' ? WEB_REDIRECT_URI : nativeRedirectUri,
-  });
-
-  // Log the redirect URI for debugging - this is the EXACT link for Google Console
-  useEffect(() => {
-    if (request) {
-      console.log('--- EXPO REDIRECT URI FOR GOOGLE CONSOLE ---');
-      console.log(request.redirectUri);
-      console.log('--------------------------------------------');
-    }
-  }, [request]);
-
-  // WEB ONLY: Manually capture OAuth response from URL after Google redirect
-  // The hook's state is lost on full page reload, so we parse the URL directly
-  useEffect(() => {
-    if (Platform.OS !== 'web') return;
-
-    const handleWebRedirect = () => {
-      if (typeof window === 'undefined') return;
-
-      // Check URL hash (implicit flow) and query params
-      const hash = window.location.hash;
-      const search = window.location.search;
-
-      // Try to extract id_token from hash fragment (e.g., #id_token=xxx&...)
-      if (hash) {
-        const hashParams = new URLSearchParams(hash.substring(1));
-        const idToken = hashParams.get('id_token');
-        if (idToken) {
-          console.log('Found id_token in URL hash, proceeding to login...');
-          // Clear the URL to prevent re-processing
-          window.history.replaceState({}, document.title, window.location.pathname);
-          handleGoogleLogin(idToken);
-          return;
-        }
-      }
-
-      // Try query params (authorization code flow fallback)
-      if (search) {
-        const queryParams = new URLSearchParams(search);
-        const idToken = queryParams.get('id_token');
-        if (idToken) {
-          console.log('Found id_token in URL query, proceeding to login...');
-          window.history.replaceState({}, document.title, window.location.pathname);
-          handleGoogleLogin(idToken);
-          return;
-        }
-      }
-    };
-
-    handleWebRedirect();
-  }, []); // Run once on mount
-
-  useEffect(() => {
-    if (response) {
-      console.log('Auth Response Type:', response.type);
-      if (response.type === 'success') {
-        // RESILIENT TOKEN EXTRACTION: Google returns it in different places depending on platform
-        const idToken = response.authentication?.idToken || (response as any).params?.id_token;
-
-        if (idToken) {
-          console.log('Token found! Proceeding to server login...');
-          handleGoogleLogin(idToken);
-        } else {
-          console.error('Auth succeeded but ID Token is missing in response!');
-          console.log('Full Response Params:', JSON.stringify(response.params));
-        }
-      } else if (response.type === 'error') {
-        console.error('Auth Error Details:', response.error);
-      }
-    }
-  }, [response]);
-
-  const handleGoogleLogin = async (idToken: string) => {
-    console.log('--- STARTING SERVER LOGIN ---');
-    console.log('Sending ID Token to Backend...');
-    setIsLoading(true);
-    try {
-      const resp = await authAPI.googleLogin(idToken);
-      console.log('Server Response Received:', resp.status);
-
-      if (!resp.data || !resp.data.token) {
-        throw new Error('Server returned success but no token! Check backend logs.');
-      }
-
-      const { token, isNewUser, user } = resp.data;
-      console.log('Login Successful! Saving session...');
-
-      // Save token and user info
-      await AsyncStorage.setItem('userToken', token);
-      await AsyncStorage.setItem('userInfo', JSON.stringify(user));
-
-      console.log('Navigation to:', isNewUser ? 'Profile Setup' : 'Tabs');
-
-      if (isNewUser) {
-        router.replace('/profile-setup');
-      } else {
-        router.replace('/(tabs)');
-      }
-
-      // Web-only: Ensure closing window doesn't block progress
-      if (Platform.OS === 'web' && typeof window !== 'undefined') {
-        setTimeout(() => {
-          // If still on auth page after 2 seconds, force navigation
-          if (window.location.pathname.includes('auth')) {
-            window.location.href = isNewUser ? '/profile-setup' : '/';
-          }
-        }, 2000);
-      }
-    } catch (error: any) {
-      console.error('SERVER LOGIN ERROR:', error);
-      if (error.response) {
-        console.error('Server Data:', error.response.data);
-        console.error('Server Status:', error.response.status);
-      }
-      Alert.alert('Login Error', error.response?.data?.message || 'The server rejected your Google login.');
-    } finally {
-      setIsLoading(false);
-      console.log('--- SERVER LOGIN FINISHED ---');
-    }
+  const validateEmail = (email: string) => {
+    const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return re.test(email);
   };
 
   const handleSendOTP = async () => {
-    if (phoneNumber.length === 10) {
+    const isPhoneValid = loginMethod === 'phone' && phoneNumber.length === 10;
+    const isEmailValid = loginMethod === 'email' && validateEmail(email);
+
+    if (isPhoneValid || isEmailValid) {
       if (!hasAcceptedPolicy && mode === 'signup') {
         setShowPolicyModal(true);
         return;
       }
       setIsLoading(true);
       try {
-        await authAPI.sendOtp(phoneNumber);
+        await authAPI.sendOtp(
+          loginMethod === 'phone' ? phoneNumber : undefined,
+          loginMethod === 'email' ? email : undefined
+        );
         setStep('otp');
       } catch (error) {
         Alert.alert('Error', 'Server is starting up. Please wait a moment.');
@@ -206,12 +65,16 @@ export default function AuthScreen() {
     if (otpString.length === 6) {
       setIsLoading(true);
       try {
-        const response = await authAPI.verifyOtp(phoneNumber, otpString);
+        const response = await authAPI.verifyOtp(
+          loginMethod === 'phone' ? phoneNumber : undefined,
+          loginMethod === 'email' ? email : undefined,
+          otpString
+        );
         const { token, isNewUser, user } = response.data;
 
         // Save token and user info
         await AsyncStorage.setItem('userToken', token);
-        await AsyncStorage.setItem('userInfo', JSON.stringify(user));
+        await AsyncStorage.setItem('userInfo', JSON.stringify({ ...user, isNewUser }));
 
         if (isNewUser) {
           router.replace('/profile-setup');
@@ -290,51 +153,58 @@ export default function AuthScreen() {
                 </TouchableOpacity>
               </View>
 
-              {/* Phone Input Step */}
+              {/* Phone/Email Toggle - REMOVED: Email Only */}
+
+              {/* Input Step */}
               {step === 'phone' && (
                 <Animated.View entering={FadeInDown}>
-                  {/* Google Login Button */}
-                  <TouchableOpacity
-                    style={styles.googleButton}
-                    onPress={() => {
-                      // On web, use full page redirect instead of popup to avoid blocking
-                      if (Platform.OS === 'web' && request?.url) {
-                        window.location.href = request.url;
-                      } else {
-                        promptAsync();
-                      }
-                    }}
-                    disabled={isLoading || !request}
-                  >
-                    <View style={styles.googleLogo}>
-                      <Text style={styles.googleG}>G</Text>
-                    </View>
-                    <Text style={styles.googleButtonText}>Continue with Google</Text>
-                  </TouchableOpacity>
+                  {loginMethod === 'phone' ? (
+                    <>
+                      <Text style={styles.label}>Phone Number</Text>
+                      <View style={styles.inputContainer}>
+                        <Phone size={20} color="#9CA3AF" />
+                        <TextInput
+                          placeholder="Enter 10 digit number"
+                          placeholderTextColor="#9CA3AF"
+                          value={phoneNumber}
+                          onChangeText={(text) => { const v = text.replace(/\D/g, ''); if (v.length <= 10) setPhoneNumber(v); }}
+                          keyboardType="phone-pad"
+                          style={styles.input}
+                          maxLength={10}
+                        />
+                      </View>
+                    </>
+                  ) : (
+                    <>
+                      <Text style={styles.label}>Email Address</Text>
+                      <View style={styles.inputContainer}>
+                        <Mail size={20} color="#9CA3AF" />
+                        <TextInput
+                          placeholder="yourname@example.com"
+                          placeholderTextColor="#9CA3AF"
+                          value={email}
+                          onChangeText={setEmail}
+                          keyboardType="email-address"
+                          autoCapitalize="none"
+                          style={styles.input}
+                        />
+                      </View>
+                    </>
+                  )}
 
-                  <View style={styles.divider}>
-                    <View style={styles.dividerLine} />
-                    <Text style={styles.dividerText}>or use phone</Text>
-                    <View style={styles.dividerLine} />
-                  </View>
-
-                  <Text style={styles.label}>Phone Number</Text>
-                  <View style={styles.phoneInputContainer}>
-                    <Phone size={20} color="#9CA3AF" />
-                    <TextInput
-                      placeholder="Enter 10 digit number"
-                      placeholderTextColor="#9CA3AF"
-                      value={phoneNumber}
-                      onChangeText={(text) => { const v = text.replace(/\D/g, ''); if (v.length <= 10) setPhoneNumber(v); }}
-                      keyboardType="phone-pad"
-                      style={styles.phoneInput}
-                      maxLength={10}
-                    />
-                  </View>
                   <TouchableOpacity
                     onPress={handleSendOTP}
-                    disabled={phoneNumber.length !== 10 || isLoading}
-                    style={[styles.submitButton, (phoneNumber.length !== 10 || isLoading) && styles.submitButtonDisabled]}
+                    disabled={
+                      (loginMethod === 'phone' && phoneNumber.length !== 10) ||
+                      (loginMethod === 'email' && !validateEmail(email)) ||
+                      isLoading
+                    }
+                    style={[
+                      styles.submitButton,
+                      ((loginMethod === 'phone' && phoneNumber.length !== 10) ||
+                        (loginMethod === 'email' && !validateEmail(email)) ||
+                        isLoading) && styles.submitButtonDisabled
+                    ]}
                     activeOpacity={0.9}
                   >
                     <Text style={styles.submitButtonText}>{isLoading ? 'Sending...' : 'Send OTP'}</Text>
@@ -351,7 +221,9 @@ export default function AuthScreen() {
               {/* OTP Input Step */}
               {step === 'otp' && (
                 <Animated.View entering={FadeInDown}>
-                  <Text style={styles.otpLabel}>Sent to +91 {phoneNumber}</Text>
+                  <Text style={styles.otpLabel}>
+                    Sent to {loginMethod === 'phone' ? `+91 ${phoneNumber}` : email}
+                  </Text>
                   <View style={styles.otpContainer}>
                     {otp.map((digit, index) => (
                       <TextInput
@@ -456,7 +328,7 @@ const styles = StyleSheet.create({
   tabTextActive: { color: 'white' },
 
   label: { fontWeight: '600', fontSize: 13, color: '#374151', marginBottom: 8 },
-  phoneInputContainer: {
+  inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#F9FAFB',
@@ -467,7 +339,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     height: 50
   },
-  phoneInput: {
+  input: {
     flex: 1,
     fontSize: 16,
     fontWeight: '500',
@@ -493,6 +365,35 @@ const styles = StyleSheet.create({
   toggleText: { textAlign: 'center', fontSize: 13, color: '#6B7280', marginTop: 20 },
   toggleLink: { color: 'black', fontWeight: '600' },
 
+  methodTabsContainer: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 20,
+  },
+  methodTab: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  methodTabActive: {
+    backgroundColor: LIME,
+    borderColor: LIME,
+  },
+  methodTabText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#6B7280',
+  },
+  methodTabTextActive: {
+    color: 'black',
+  },
+
   otpLabel: { textAlign: 'center', fontWeight: '600', fontSize: 14, color: '#374151', marginBottom: 16 },
   otpContainer: { flexDirection: 'row', justifyContent: 'center', gap: 8, marginBottom: 20 },
   otpInput: {
@@ -513,57 +414,39 @@ const styles = StyleSheet.create({
 
   footerText: { textAlign: 'center', fontSize: 12, color: '#6B7280', marginTop: 20 },
 
-  // Google Auth Styles
-  googleButton: {
+  helperContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'white',
-    borderRadius: 14,
-    paddingVertical: 12,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
+    backgroundColor: '#F3F4F6',
+    padding: 12,
+    borderRadius: 12,
     marginBottom: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
+    marginTop: -12,
+    borderLeftWidth: 3,
+    borderLeftColor: 'black',
   },
-  googleLogo: {
-    width: 24,
-    height: 24,
-    backgroundColor: '#4285F4',
-    borderRadius: 4,
+  helperIcon: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: 'black',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 12,
+    marginRight: 10,
   },
-  googleG: {
+  helperIconText: {
     color: 'white',
-    fontWeight: 'bold',
-    fontSize: 14,
-  },
-  googleButtonText: {
-    color: '#374151',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  divider: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginVertical: 20,
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: '#E5E7EB',
-  },
-  dividerText: {
-    marginHorizontal: 12,
-    color: '#9CA3AF',
     fontSize: 12,
-    fontWeight: '500',
-    textTransform: 'uppercase',
+    fontWeight: 'bold',
   },
+  helperText: {
+    fontSize: 12,
+    color: '#4B5563',
+    flex: 1,
+  },
+  helperHighlight: {
+    fontWeight: '700',
+    color: 'black',
+  },
+
 });

@@ -13,16 +13,16 @@ const DEFAULT_POST_IMAGE = 'https://images.unsplash.com/photo-1516321318423-f06f
  */
 const isValidUrl = (url: string | undefined | null): boolean => {
   if (!url) return false;
-  
+
   // Invalid URL patterns
   if (url.startsWith('blob:')) return false;
   if (url.startsWith('file:///')) return false;
   if (url.startsWith('content://')) return false;
-  
+
   // Valid URL patterns
   if (url.startsWith('http://') || url.startsWith('https://')) return true;
   if (url.startsWith('data:image')) return true;
-  
+
   return false;
 };
 
@@ -62,6 +62,18 @@ export const getPostImageUrl = (url: string | undefined | null): string => {
   return isValidUrl(url) ? url! : DEFAULT_POST_IMAGE;
 };
 
-export default { getValidImageUrl, getAvatarUrl, getAvatarSource, getPostImageUrl };
+const DEFAULT_COVER_LOCAL = require('../assets/monochrome_mountain_forest_header_1769824937927.jpg');
+
+/**
+ * Get the proper Image source for cover photos
+ */
+export const getCoverSource = (url: string | undefined | null): { uri: string } | number => {
+  if (isValidUrl(url)) {
+    return { uri: url! };
+  }
+  return DEFAULT_COVER_LOCAL;
+};
+
+export default { getValidImageUrl, getAvatarUrl, getAvatarSource, getPostImageUrl, getCoverSource };
 
 

@@ -4,7 +4,7 @@ import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useState, useEffect } from 'react';
 import { Camera, ChevronRight, GraduationCap, BookOpen, AtSign, Check, X, User } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
-import { authAPI } from './services/api';
+import { authAPI } from '../services/api';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const LIME = '#D4FF00';
@@ -217,7 +217,15 @@ export default function ProfileSetupScreen() {
         profileImage: profileImageUrl,
       };
 
-      await authAPI.updateProfile(profileData);
+      const res = await authAPI.updateProfile(profileData);
+
+      // Update AsyncStorage with the latest user data
+      const updatedUser = res.data;
+      const userInfo = {
+        ...updatedUser,
+        isNewUser: false, // Ensure we mark profile as complete
+      };
+      await AsyncStorage.setItem('userInfo', JSON.stringify(userInfo));
 
       console.log('Profile Saved. Navigating to Feed...');
       router.replace('/');

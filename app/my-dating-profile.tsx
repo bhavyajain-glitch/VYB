@@ -1,10 +1,11 @@
-import { View, Text, Image, TouchableOpacity, ScrollView, StyleSheet, Dimensions, Platform, ActivityIndicator } from 'react-native';
+import { View, Text, Image, TouchableOpacity, ScrollView, StyleSheet, Dimensions, Platform, ActivityIndicator, Alert } from 'react-native';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'expo-router';
-import { ArrowLeft, Edit3, MapPin, GraduationCap, Ruler, BookOpen, Heart } from 'lucide-react-native';
+import { ArrowLeft, Edit3, MapPin, GraduationCap, Ruler, BookOpen, Heart, Eye, EyeOff, Sparkles, X, UserCheck } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Animated, { FadeIn, FadeInUp } from 'react-native-reanimated';
-import { authAPI } from './services/api';
+import { authAPI } from '../services/api';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const { width } = Dimensions.get('window');
 const PINK = '#EC4899';
@@ -30,12 +31,18 @@ interface DatingProfile {
     datingPhotos?: string[];
     fullName?: string;
     username?: string;
+    isDatingProfileVisible?: boolean;
+    blockedUsers?: Array<{ _id: string; username: string; fullName: string; profileImage: string }>;
 }
 
 export default function MyDatingProfile() {
     const router = useRouter();
     const [profile, setProfile] = useState<DatingProfile | null>(null);
     const [isLoading, setIsLoading] = useState(true);
+    const [showPreview, setShowPreview] = useState(false);
+    const [showBlockedUsers, setShowBlockedUsers] = useState(false);
+    const [isUpdatingPrivacy, setIsUpdatingPrivacy] = useState(false);
+    const [blockedUsers, setBlockedUsers] = useState<any[]>([]);
 
     useEffect(() => {
         loadProfile();
@@ -48,11 +55,46 @@ export default function MyDatingProfile() {
                 // Also get user info for name
                 const userRes = await authAPI.getMe();
                 setProfile({ ...res.data, fullName: userRes.data?.fullName, username: userRes.data?.username });
+                setBlockedUsers(userRes.data?.blockedUsers || []);
             }
         } catch (error) {
             console.error('Error loading profile:', error);
         } finally {
             setIsLoading(false);
+        }
+    };
+
+    const togglePrivacy = async () => {
+        if (!profile) return;
+        setIsUpdatingPrivacy(true);
+        try {
+            const newStatus = !profile.isDatingProfileVisible;
+            const res = await authAPI.updateDatingProfile({ isDatingProfileVisible: newStatus });
+            if (res.data?.success) {
+                setProfile(prev => prev ? { ...prev, isDatingProfileVisible: newStatus } : null);
+            }
+        } catch (error) {
+            console.error('Error updating privacy:', error);
+            Alert.alert('Error', 'Failed to update privacy settings');
+        } finally {
+            setIsUpdatingPrivacy(false);
+        }
+    };
+
+    const handleUnblock = async (targetUserId: string) => {
+        try {
+            const res = await authAPI.unblockUser(targetUserId);
+            if (res.data?.success) {
+                setBlockedUsers(prev => prev.filter(u => u._id !== targetUserId));
+                if (Platform.OS === 'web') {
+                    window.alert('User unblocked');
+                } else {
+                    Alert.alert('Success', 'User unblocked');
+                }
+            }
+        } catch (error) {
+            console.error('Error unblocking user:', error);
+            Alert.alert('Error', 'Failed to unblock user');
         }
     };
 
@@ -112,6 +154,90 @@ export default function MyDatingProfile() {
         contentItems.push({ type: 'prompt', data: { question: 'My interests', answer: profile.datingInterests.join(' • ') } });
     }
 
+    const ProfileContent = () => (
+        <ScrollView
+            style={styles.scrollView}
+            contentContainerStyle={styles.scrollContent}
+            showsVerticalScrollIndicator={false}
+        >
+            {/* Hero Photo Section */}
+            <Animated.View entering={FadeIn} style={styles.heroContainer}>
+                <Image source={{ uri: heroPhoto }} style={styles.heroImage} />
+                <LinearGradient
+                    colors={['transparent', 'rgba(0,0,0,0.7)']}
+                    style={styles.heroGradient}
+                />
+                <View style={styles.heroInfo}>
+                    <Text style={styles.heroName}>{profile.fullName || profile.username || 'You'}</Text>
+                    <View style={styles.heroDetails}>
+                        {profile.datingHeight && (
+                            <View style={styles.heroBadge}>
+                                <Ruler size={12} color="white" />
+                                <Text style={styles.heroBadgeText}>{profile.datingHeight} cm</Text>
+                            </View>
+                        )}
+                        {profile.datingGender && (
+                            <View style={styles.heroBadge}>
+                                <Text style={styles.heroBadgeText}>{profile.datingGender}</Text>
+                            </View>
+                        )}
+                    </View>
+                </View>
+            </Animated.View>
+
+            {/* Content Cards */}
+            {contentItems.map((item, index) => (
+                <Animated.View
+                    key={index}
+                    entering={FadeInUp.delay(100 * index)}
+                    style={styles.card}
+                >
+                    {item.type === 'photo' ? (
+                        <View style={styles.photoCard}>
+                            <Image source={{ uri: item.data }} style={styles.cardImage} />
+                        </View>
+                    ) : (
+                        <View style={styles.promptCard}>
+                            <Text style={styles.promptQuestion}>{item.data.question}</Text>
+                            <Text style={styles.promptAnswer}>{item.data.answer}</Text>
+                        </View>
+                    )}
+                </Animated.View>
+            ))}
+
+            {/* Details Section */}
+            <Animated.View entering={FadeInUp.delay(300)} style={styles.detailsCard}>
+                <Text style={styles.detailsTitle}>Details</Text>
+                <View style={styles.pillsContainer}>
+                    {profile.datingHometown && (
+                        <View style={styles.pill}>
+                            <MapPin size={14} color="#6B7280" />
+                            <Text style={styles.pillText}>{profile.datingHometown}</Text>
+                        </View>
+                    )}
+                    {profile.datingCollege && (
+                        <View style={styles.pill}>
+                            <GraduationCap size={14} color="#6B7280" />
+                            <Text style={styles.pillText}>{profile.datingCollege}</Text>
+                        </View>
+                    )}
+                    {profile.datingCourse && (
+                        <View style={styles.pill}>
+                            <BookOpen size={14} color="#6B7280" />
+                            <Text style={styles.pillText}>{profile.datingCourse}</Text>
+                        </View>
+                    )}
+                    {profile.datingLookingFor && (
+                        <View style={styles.pill}>
+                            <Heart size={14} color="#6B7280" />
+                            <Text style={styles.pillText}>Looking for {profile.datingLookingFor}</Text>
+                        </View>
+                    )}
+                </View>
+            </Animated.View>
+        </ScrollView>
+    );
+
     return (
         <View style={styles.container}>
             {/* Header */}
@@ -130,6 +256,55 @@ export default function MyDatingProfile() {
                 contentContainerStyle={styles.scrollContent}
                 showsVerticalScrollIndicator={false}
             >
+                {/* Privacy & Preview Actions */}
+                <View style={styles.actionGrid}>
+                    <TouchableOpacity style={styles.actionCard} onPress={() => setShowPreview(true)}>
+                        <View style={[styles.actionIcon, { backgroundColor: '#EEF2FF' }]}>
+                            <Eye size={20} color="#6366F1" />
+                        </View>
+                        <Text style={styles.actionText}>Profile Preview</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                        style={styles.actionCard}
+                        onPress={togglePrivacy}
+                        disabled={isUpdatingPrivacy}
+                    >
+                        <View style={[styles.actionIcon, { backgroundColor: profile.isDatingProfileVisible ? '#ECFDF5' : '#FEF2F2' }]}>
+                            {profile.isDatingProfileVisible ? (
+                                <UserCheck size={20} color="#10B981" />
+                            ) : (
+                                <EyeOff size={20} color="#EF4444" />
+                            )}
+                        </View>
+                        <Text style={styles.actionText}>
+                            {profile.isDatingProfileVisible ? 'Public Mode' : 'Hidden Mode'}
+                        </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity style={styles.actionCard} onPress={() => setShowBlockedUsers(true)}>
+                        <View style={[styles.actionIcon, { backgroundColor: '#F3F4F6' }]}>
+                            <EyeOff size={20} color="#6B7280" />
+                        </View>
+                        <Text style={styles.actionText}>Hidden Users</Text>
+                    </TouchableOpacity>
+                </View>
+
+                {/* Info Box for Privacy */}
+                {!profile.isDatingProfileVisible && (
+                    <View style={styles.privacyInfoBox}>
+                        <EyeOff size={16} color="#B91C1C" />
+                        <Text style={styles.privacyInfoText}>
+                            Your profile is currently hidden and won't appear to others in the Suggest tab.
+                        </Text>
+                    </View>
+                )}
+
+                <View style={styles.sectionHeader}>
+                    <Text style={styles.sectionTitle}>Content Preview</Text>
+                    <Sparkles size={16} color={PINK} />
+                </View>
+
                 {/* Hero Photo Section */}
                 <Animated.View entering={FadeIn} style={styles.heroContainer}>
                     <Image source={{ uri: heroPhoto }} style={styles.heroImage} />
@@ -221,8 +396,111 @@ export default function MyDatingProfile() {
                     <Text style={styles.editProfileButtonText}>Edit Profile</Text>
                 </TouchableOpacity>
 
+                {/* Delete Profile Button */}
+                <TouchableOpacity
+                    style={[styles.editProfileButton, { backgroundColor: '#fee2e2' }]} // Red background
+                    onPress={() => {
+                        const handleDelete = async () => {
+                            try {
+                                setIsLoading(true);
+                                const res = await authAPI.resetDatingProfile();
+                                if (res.data?.success) {
+                                    // Clear local consent
+                                    await AsyncStorage.setItem('datingTermsAccepted', 'false');
+
+                                    if (Platform.OS === 'web') {
+                                        window.alert("Your dating profile has been reset.");
+                                    } else {
+                                        Alert.alert("Deleted", "Your dating profile has been reset.");
+                                    }
+                                    router.replace('/(tabs)/dating');
+                                } else {
+                                    throw new Error(res.data?.message || 'Failed to reset profile');
+                                }
+                            } catch (error: any) {
+                                console.error('Delete dating profile error:', error);
+                                if (Platform.OS === 'web') {
+                                    window.alert(error.message || "Failed to delete profile.");
+                                } else {
+                                    Alert.alert("Error", error.message || "Failed to delete profile.");
+                                }
+                            } finally {
+                                setIsLoading(false);
+                            }
+                        };
+
+                        const message = "This will delete all your dating info, photos, and preferences. You'll need to re-enter everything to use Dating Mode again.";
+                        const title = "Delete Dating Profile?";
+
+                        if (Platform.OS === 'web') {
+                            if (window.confirm(`${title}\n\n${message}`)) {
+                                handleDelete();
+                            }
+                        } else {
+                            Alert.alert(title, message, [
+                                { text: "Cancel", style: "cancel" },
+                                { text: "Delete", style: "destructive", onPress: handleDelete }
+                            ]);
+                        }
+                    }}
+                >
+                    <Edit3 size={18} color="#EF4444" />
+                    <Text style={[styles.editProfileButtonText, { color: '#EF4444' }]}>Delete Dating Profile</Text>
+                </TouchableOpacity>
+
                 <View style={{ height: 40 }} />
             </ScrollView>
+
+            {/* Profile Preview Modal */}
+            {showPreview && (
+                <View style={styles.modalOverlay}>
+                    <View style={styles.modalContent}>
+                        <View style={styles.modalHeader}>
+                            <Text style={styles.modalTitle}>Discovery Preview</Text>
+                            <TouchableOpacity onPress={() => setShowPreview(false)} style={styles.closeModal}>
+                                <X size={24} color="#111827" />
+                            </TouchableOpacity>
+                        </View>
+                        <ProfileContent />
+                    </View>
+                </View>
+            )}
+
+            {/* Blocked Users Modal */}
+            {showBlockedUsers && (
+                <View style={styles.modalOverlay}>
+                    <View style={[styles.modalContent, { height: '80%' }]}>
+                        <View style={styles.modalHeader}>
+                            <Text style={styles.modalTitle}>Hidden Users</Text>
+                            <TouchableOpacity onPress={() => setShowBlockedUsers(false)} style={styles.closeModal}>
+                                <X size={24} color="#111827" />
+                            </TouchableOpacity>
+                        </View>
+                        <ScrollView style={styles.blockedList}>
+                            {blockedUsers.length === 0 ? (
+                                <View style={styles.emptyBlocked}>
+                                    <Text style={styles.emptyBlockedText}>No users are currently hidden.</Text>
+                                </View>
+                            ) : (
+                                blockedUsers.map(user => (
+                                    <View key={user._id} style={styles.blockedUserItem}>
+                                        <Image
+                                            source={{ uri: user.profileImage || 'https://via.placeholder.com/150' }}
+                                            style={styles.blockedUserAvatar}
+                                        />
+                                        <View style={styles.blockedUserInfo}>
+                                            <Text style={styles.blockedUserName}>{user.fullName || user.username}</Text>
+                                            <TouchableOpacity onPress={() => handleUnblock(user._id)}>
+                                                <Text style={styles.unblockText}>Unblock</Text>
+                                            </TouchableOpacity>
+                                        </View>
+                                    </View>
+                                ))
+                            )}
+                        </ScrollView>
+                    </View>
+                </View>
+            )}
         </View>
     );
 }
@@ -488,4 +766,143 @@ const styles = StyleSheet.create({
         fontSize: 16,
         fontWeight: 'bold',
     },
+
+    // Action Grid
+    actionGrid: {
+        flexDirection: 'row',
+        gap: 12,
+        marginBottom: 20,
+    },
+    actionCard: {
+        flex: 1,
+        backgroundColor: 'white',
+        borderRadius: 16,
+        padding: 16,
+        alignItems: 'center',
+        gap: 8,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.05,
+        shadowRadius: 3,
+        elevation: 1,
+    },
+    actionIcon: {
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    actionText: {
+        fontSize: 12,
+        fontWeight: '600',
+        color: '#374151',
+    },
+
+    privacyInfoBox: {
+        flexDirection: 'row',
+        gap: 10,
+        backgroundColor: '#FEF2F2',
+        padding: 12,
+        borderRadius: 12,
+        marginBottom: 20,
+        alignItems: 'center',
+    },
+    privacyInfoText: {
+        flex: 1,
+        fontSize: 12,
+        color: '#B91C1C',
+        lineHeight: 18,
+    },
+
+    sectionHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        marginBottom: 12,
+        marginTop: 8,
+    },
+    sectionTitle: {
+        fontSize: 14,
+        fontWeight: 'bold',
+        color: '#111827',
+    },
+
+    // Modal
+    modalOverlay: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: 'rgba(0,0,0,0.5)',
+        zIndex: 100,
+        justifyContent: 'flex-end',
+    },
+    modalContent: {
+        backgroundColor: '#FAFAFA',
+        borderTopLeftRadius: 30,
+        borderTopRightRadius: 30,
+        height: '90%',
+        width: '100%',
+    },
+    modalHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        padding: 20,
+        borderBottomWidth: 1,
+        borderBottomColor: '#E5E7EB',
+        backgroundColor: 'white',
+        borderTopLeftRadius: 30,
+        borderTopRightRadius: 30,
+    },
+    modalTitle: {
+        fontSize: 18,
+        fontWeight: 'bold',
+        color: '#111827',
+    },
+    closeModal: {
+        padding: 4,
+    },
+    blockedList: {
+        padding: 20,
+    },
+    emptyBlocked: {
+        padding: 40,
+        alignItems: 'center',
+    },
+    emptyBlockedText: {
+        color: '#9CA3AF',
+        fontSize: 14,
+    },
+    blockedUserItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: 12,
+        borderBottomWidth: 1,
+        borderBottomColor: '#F3F4F6',
+    },
+    blockedUserAvatar: {
+        width: 48,
+        height: 48,
+        borderRadius: 24,
+        marginRight: 12,
+    },
+    blockedUserInfo: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+    },
+    blockedUserName: {
+        fontSize: 16,
+        fontWeight: '600',
+        color: '#111827',
+    },
+    unblockText: {
+        color: PINK,
+        fontWeight: 'bold',
+    },
+
 });

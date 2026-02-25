@@ -1,20 +1,44 @@
-import { View, Text, Image, TouchableOpacity, ScrollView, TextInput, StyleSheet, Dimensions, Platform, Alert, RefreshControl, ActivityIndicator } from 'react-native';
-import { Heart, Sparkles, Coins, User, X, Calendar, MessageCircle, Send, MapPin, GraduationCap, Ruler, BookOpen } from 'lucide-react-native';
+import { View, Text, Image, TouchableOpacity, ScrollView, TextInput, StyleSheet, Dimensions, Platform, Alert, RefreshControl, ActivityIndicator, Modal } from 'react-native';
+import {
+  Heart, Sparkles, Coins, Eye, Clock, User, MessageCircle, Heart as HeartIcon,
+  UserMinus, ShieldAlert, MapPin, GraduationCap, BookOpen, Ruler, ChevronRight,
+  CheckCircle2, X, Calendar, Send
+} from 'lucide-react-native';
 import { useState, useEffect, useCallback } from 'react';
 import Animated, { FadeIn, SlideInUp, useSharedValue, useAnimatedStyle, withSpring, withTiming, runOnJS, interpolate, Extrapolation } from 'react-native-reanimated';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import { LinearGradient } from 'expo-linear-gradient';
-import { authAPI } from '../services/api';
+import { authAPI } from '../../services/api';
 import { useRouter } from 'expo-router';
 import { getAvatarSource } from '../../utils/imageUtils';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useAnalytics } from '../../hooks/useAnalytics';
 import DatingTermsModal from '../../components/DatingTermsModal';
 import BlindDatingModal from '../../components/BlindDatingModal';
+import DatingTimerModal from '../../components/DatingTimerModal';
+import RazorpayCheckout from 'react-native-razorpay';
 
 const LIME = '#D4FF00';
 const { width } = Dimensions.get('window');
 const isWeb = Platform.OS === 'web';
 const MAX_WIDTH = 600;
+
+// Target Date: Jan 31st, 2026, 5:00 PM
+const TARGET_DATE = new Date('2026-01-31T17:00:00');
+
+// Helper to load Razorpay script on Web
+const loadRazorpayScript = () => {
+  return new Promise((resolve) => {
+    if (Platform.OS !== 'web') return resolve(true);
+    if ((window as any).Razorpay) return resolve(true);
+
+    const script = document.createElement('script');
+    script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+    script.onload = () => resolve(true);
+    script.onerror = () => resolve(false);
+    document.body.appendChild(script);
+  });
+};
 
 // Type definition matching Backend User Model with dating fields
 interface Match {
@@ -25,7 +49,7 @@ interface Match {
   bio?: string;
   college?: string;
   year?: string;
-  interests: string[];
+  interests?: string[];
   coins?: number;
   age?: number; // User's age from main profile
   // Dating profile fields
@@ -39,18 +63,24 @@ interface Match {
   datingGender?: string;
   datingIntentions?: string[];
   datingAge?: number;
+  likeId?: string;
 }
 
 export default function DatingScreen() {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<'vibe' | 'chat' | 'discover'>('discover');
+  const { logFeatureUse } = useAnalytics('dating');
+  const [activeTab, setActiveTab] = useState<'vibe' | 'chat' | 'suggest'>('suggest');
   const [coins, setCoins] = useState(0);
   const [currentMatch, setCurrentMatch] = useState<Match | null>(null);
   const [recommendations, setRecommendations] = useState<Match[]>([]);
+  const [vibeMatches, setVibeMatches] = useState<any[]>([]);
   const [selectedProfile, setSelectedProfile] = useState<Match | null>(null);
   const [showShop, setShowShop] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [showOutofLikesModal, setShowOutofLikesModal] = useState(false);
+  const [vibeViewMode, setVibeViewMode] = useState<'grid' | 'list'>('grid');
   const [showBlindDating, setShowBlindDating] = useState(false);
+  const [showTimerModal, setShowTimerModal] = useState(false);
 
   // Likes System State
   const [likesCount, setLikesCount] = useState(5);
@@ -58,6 +88,8 @@ export default function DatingScreen() {
   const [activeChatCount, setActiveChatCount] = useState(0);
   const [receivedLikes, setReceivedLikes] = useState<any[]>([]);
   const [nextRegenTime, setNextRegenTime] = useState<Date | null>(null);
+  const [unlimitedCoinsExpiry, setUnlimitedCoinsExpiry] = useState<Date | null>(null);
+  const [countdownText, setCountdownText] = useState<string | null>(null);
 
   // Dating Setup State
   const [isLoading, setIsLoading] = useState(true);
@@ -66,8 +98,51 @@ export default function DatingScreen() {
 
   // Check dating profile status on load
   useEffect(() => {
-    checkDatingStatus();
+    const init = async () => {
+      const token = await AsyncStorage.getItem('userToken');
+      if (token) {
+        checkDatingStatus();
+      }
+    };
+    init();
   }, []);
+
+  // Unlimited Coins Timer
+  useEffect(() => {
+    if (!unlimitedCoinsExpiry) {
+      setCountdownText(null);
+      return;
+    }
+
+    const updateTimer = () => {
+      const now = new Date().getTime();
+      const expiry = new Date(unlimitedCoinsExpiry).getTime();
+      const diff = expiry - now;
+
+      if (diff <= 0) {
+        setUnlimitedCoinsExpiry(null);
+        setCountdownText(null);
+        return;
+      }
+
+      const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+      const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+      const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+      const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+
+      const parts = [];
+      if (days > 0) parts.push(`${days}d`);
+      if (hours > 0 || days > 0) parts.push(`${hours}h`);
+      parts.push(`${minutes}m`);
+      parts.push(`${seconds}s`);
+
+      setCountdownText(parts.join(' '));
+    };
+
+    updateTimer();
+    const interval = setInterval(updateTimer, 1000);
+    return () => clearInterval(interval);
+  }, [unlimitedCoinsExpiry]);
 
   const checkDatingStatus = async () => {
     setIsLoading(true);
@@ -85,11 +160,14 @@ export default function DatingScreen() {
           return;
         } else {
           // Fully setup - load data
+          await AsyncStorage.setItem('datingTermsAccepted', 'true'); // Sync local
           setDatingProfileComplete(true);
+          setShowTermsModal(false); // Ensure modal is off
           fetchUserData();
           fetchRecommendations();
           fetchLikesStatus();
           fetchReceivedLikes();
+          fetchVibeMatches();
         }
       }
     } catch (error) {
@@ -103,7 +181,10 @@ export default function DatingScreen() {
 
   const handleAcceptTerms = async () => {
     try {
+      // Optimistic update
+      await AsyncStorage.setItem('datingTermsAccepted', 'true');
       await authAPI.acceptDatingTerms();
+      logFeatureUse('accept_terms');
       setShowTermsModal(false);
       // Navigate to profile setup
       router.replace('/dating-profile-setup');
@@ -144,6 +225,7 @@ export default function DatingScreen() {
         setActiveChatCount(res.data.activeChatCount || 0);
         setCoins(res.data.coins || 0);
         setNextRegenTime(res.data.nextRegenTime ? new Date(res.data.nextRegenTime) : null);
+        setUnlimitedCoinsExpiry(res.data.unlimitedCoinsExpiry ? new Date(res.data.unlimitedCoinsExpiry) : null);
       }
     } catch (error) {
       console.error('Error fetching likes status:', error);
@@ -168,56 +250,215 @@ export default function DatingScreen() {
     }
   };
 
+  const fetchVibeMatches = async () => {
+    try {
+      const res = await authAPI.getActiveChats();
+      if (res.data) setVibeMatches(res.data);
+    } catch (error) {
+      console.error('Error fetching vibe matches:', error);
+    }
+  };
+
+  const handlePassUser = async (targetUserId: string) => {
+    try {
+      await authAPI.passUser(targetUserId);
+    } catch (error) {
+      console.error('Error passing user:', error);
+    }
+  };
+
   const onRefresh = async () => {
     setRefreshing(true);
-    await Promise.all([fetchUserData(), fetchRecommendations(), fetchLikesStatus(), fetchReceivedLikes()]);
+    await Promise.all([
+      fetchUserData(),
+      fetchRecommendations(),
+      fetchLikesStatus(),
+      fetchReceivedLikes(),
+      fetchVibeMatches()
+    ]);
     setRefreshing(false);
   };
 
+  const handleGoBlind = () => {
+    const now = new Date();
+    if (now < TARGET_DATE) {
+      setShowTimerModal(true);
+    } else {
+      setShowBlindDating(true);
+    }
+  };
+
   const handleSwitchVibe = async (targetUser: Match) => {
-    if (coins < 100) {
+    const now = new Date();
+    if (now < TARGET_DATE) {
+      setShowTimerModal(true);
+      return;
+    }
+
+    const isUnlimited = unlimitedCoinsExpiry && new Date(unlimitedCoinsExpiry) > new Date();
+
+    if (!isUnlimited && coins < 100) {
       Alert.alert('Low Balance', 'You need 100 coins to switch your vibe. Visit the shop!');
       setShowShop(true);
       return;
     }
 
-    try {
-      await authAPI.switchMatch(targetUser._id);
-      setCoins(prev => prev - 100);
-      setCurrentMatch(targetUser);
-      setSelectedProfile(null);
-      setActiveTab('vibe');
-      Alert.alert('Success', "You've switched your vibe!");
-    } catch (error: any) {
-      Alert.alert('Error', error.response?.data?.message || 'Failed to switch match');
-    }
+    Alert.alert(
+      isUnlimited ? 'Unlimited Plan' : 'Switch My Vibe',
+      isUnlimited ? `You have an active unlimited plan. Switch vibe with ${targetUser.fullName || 'User'} for free?` : `Switch your vibe with ${targetUser.fullName || 'User'} for 100 coins?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Switch',
+          onPress: async () => {
+            try {
+              await authAPI.switchMatch(targetUser._id);
+              if (!isUnlimited) setCoins(prev => prev - 100);
+              setCurrentMatch(targetUser);
+              setSelectedProfile(null);
+              setActiveTab('vibe');
+              Alert.alert('Success', "You've switched your vibe!");
+            } catch (error: any) {
+              Alert.alert('Error', error.response?.data?.message || 'Failed to switch match');
+            }
+          }
+        }
+      ]
+    );
   };
 
-  const handleBuyPacket = async (amount: number, price: number) => {
+
+
+  const handleBuyPacket = async (amount: number, price: number, packType: string = 'coins') => {
     try {
-      // In real app, Trigger Payment Gateway logic here
-      // On success:
-      const res = await authAPI.buyCoins(amount);
-      if (res.data && res.data.success) {
-        setCoins(res.data.coins);
-        Alert.alert('Purchase Successful', `Added ${amount} coins to your wallet!`);
-        setShowShop(false);
+      // 1. Create order on backend
+      const orderRes = await authAPI.createPaymentOrder(amount, price, packType);
+      if (!orderRes.data || !orderRes.data.success) {
+        throw new Error('Failed to initialize payment');
       }
-    } catch (error) {
-      Alert.alert('Error', 'Purchase failed');
+
+      const { order_id } = orderRes.data;
+
+      // 2. Get user info for prefill & sanitize phone
+      const userInfoStr = await AsyncStorage.getItem('userInfo');
+      const userInfo = userInfoStr ? JSON.parse(userInfoStr) : {};
+
+      // Clean phone number (remove +, spaces, dashes, etc.)
+      const rawPhone = userInfo.phoneNumber || '9999999999';
+      const cleanPhone = rawPhone.replace(/\D/g, '').slice(-10);
+
+      // 3. Open Razorpay Checkout
+      const options = {
+        key: 'rzp_test_SAITcJvNVyx7nR',
+        amount: Math.round(price * 100),
+        currency: 'INR',
+        name: 'Vyb',
+        description: `Purchase ${amount} coins`,
+        image: 'https://i.imgur.com/8K5y87l.png', // More reliable placeholder or Vyb logo if available
+        order_id: order_id,
+        prefill: {
+          name: userInfo.fullName || 'Vyb User',
+          email: userInfo.email || 'user@vyb.com',
+          contact: cleanPhone
+        },
+        theme: { color: '#D4FF00' },
+        retry: { enabled: true, max_count: 3 }
+      };
+
+      console.log('[Razorpay] Initializing with options:', JSON.stringify(options, null, 2));
+
+      if (Platform.OS === 'web') {
+        const scriptLoaded = await loadRazorpayScript();
+        if (!scriptLoaded) {
+          Alert.alert('Error', 'Failed to load payment gateway. Please check your internet connection.');
+          return;
+        }
+
+        const rzp = new (window as any).Razorpay({
+          ...options,
+          handler: async (response: any) => {
+            console.log('Razorpay Web Success:', response);
+            try {
+              const verifyRes = await authAPI.verifyPayment({
+                razorpay_order_id: response.razorpay_order_id,
+                razorpay_payment_id: response.razorpay_payment_id,
+                razorpay_signature: response.razorpay_signature
+              });
+
+              if (verifyRes.data && verifyRes.data.success) {
+                setCoins(verifyRes.data.coins);
+                Alert.alert('Purchase Successful', `Added ${amount} coins to your wallet!`);
+                setShowShop(false);
+              } else {
+                Alert.alert('Verification Failed', 'Payment was successful but verification failed.');
+              }
+            } catch (error: any) {
+              console.error('Web Verification Error:', error);
+              Alert.alert('Error', error.message || 'Verification failed');
+            }
+          },
+          modal: {
+            ondismiss: () => {
+              console.log('Payment modal closed by user');
+            },
+            escape: true,
+            backdropclose: false
+          },
+          notes: {
+            platform: 'web_expo'
+          }
+        });
+
+        rzp.on('payment.failed', (response: any) => {
+          console.error('Razorpay Web Payment Failed:', response.error);
+          Alert.alert('Payment Failed', response.error.description || 'Transaction failed');
+        });
+        rzp.open();
+      } else {
+        if (!RazorpayCheckout) {
+          console.error('RazorpayCheckout is null. This usually means the native module is not linked or you are running in Expo Go.');
+          Alert.alert(
+            'Native Module Missing',
+            'Razorpay is not available in the development environment (Expo Go). Please test on the Web or use a Development Build / Standalone APK.'
+          );
+          return;
+        }
+        RazorpayCheckout.open(options).then(async (data: any) => {
+          // 4. Verify payment on backend
+          try {
+            const verifyRes = await authAPI.verifyPayment({
+              razorpay_order_id: data.razorpay_order_id,
+              razorpay_payment_id: data.razorpay_payment_id,
+              razorpay_signature: data.razorpay_signature
+            });
+
+            if (verifyRes.data && verifyRes.data.success) {
+              setCoins(verifyRes.data.coins);
+              Alert.alert('Purchase Successful', `Added ${amount} coins to your wallet!`);
+              setShowShop(false);
+            } else {
+              Alert.alert('Verification Failed', 'Payment was successful but verification failed. Please contact support.');
+            }
+          } catch (error: any) {
+            Alert.alert('Error', error.message || 'Verification failed');
+          }
+        }).catch((error: any) => {
+          // handle failure
+          console.log('Razorpay Error:', error);
+          if (error.code !== 2) { // 2 is user cancelled
+            Alert.alert('Payment Failed', error.description || 'Transaction was not completed.');
+          }
+        });
+      }
+    } catch (error: any) {
+      console.error('handleBuyPacket error:', error);
+      Alert.alert('Error', error.message || 'Payment failed');
     }
   };
 
   const handleSendLike = async (targetUser: Match) => {
     if (likesCount < 1) {
-      Alert.alert(
-        'No Likes Left',
-        'Wait for free like regeneration or buy more likes (5 for 100 coins)',
-        [
-          { text: 'Buy Likes', onPress: handleBuyLikes },
-          { text: 'Cancel', style: 'cancel' }
-        ]
-      );
+      setShowOutofLikesModal(true);
       return;
     }
 
@@ -225,30 +466,114 @@ export default function DatingScreen() {
       const res = await authAPI.sendLike(targetUser._id);
       if (res.data?.success) {
         setLikesCount(res.data.likes);
-        Alert.alert('Like Sent!', 'They will see your like in their Chat tab.');
+        if (res.data.isMatch) {
+          if (res.data.canChat === false) {
+            // Match but can't chat - show cute message with Buy Slot option
+            Alert.alert(
+              'It\'s a Match! 💕',
+              res.data.message || 'You matched, but chat slots are full!',
+              [
+                { text: 'Buy Slot', onPress: () => setShowShop(true) },
+                { text: 'Got it!', style: 'cancel' }
+              ]
+            );
+          } else {
+            // Full match with chat available
+            Alert.alert(
+              'It\'s a Match! 🎉',
+              `You and ${targetUser.fullName || 'User'} like each other. You can find them in your "My Vibe" tab.`,
+              [{ text: 'Great!', onPress: () => fetchVibeMatches() }]
+            );
+          }
+        } else {
+          Alert.alert('Like Sent!', 'They will see your like in their Chat tab.');
+        }
       }
     } catch (error: any) {
-      Alert.alert('Error', error.message || 'Failed to send like');
+      const errorMsg = error.response?.data?.message || error.message || 'Failed to send like';
+      Alert.alert('Notice', errorMsg);
+    }
+  };
+
+  const handleUnmatch = async (likeId: string) => {
+    try {
+      const res = await authAPI.unmatchUser(likeId);
+      if (res.data?.success) {
+        Alert.alert('Unmatched', 'User has been unmatched and the slot is now free.');
+        setCurrentMatch(null);
+        fetchVibeMatches();
+        fetchLikesStatus();
+      }
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to unmatch');
     }
   };
 
   const handleBuyLikes = async () => {
-    if (coins < 100) {
+    const isUnlimited = unlimitedCoinsExpiry && new Date(unlimitedCoinsExpiry) > new Date();
+
+    if (!isUnlimited && coins < 100) {
       Alert.alert('Not Enough Coins', 'You need 100 coins to buy 5 likes.');
       setShowShop(true);
       return;
     }
 
-    try {
-      const res = await authAPI.buyLikes();
-      if (res.data?.success) {
-        setCoins(res.data.coins);
-        setLikesCount(res.data.likes);
-        Alert.alert('Success', 'Purchased 5 likes!');
-      }
-    } catch (error: any) {
-      Alert.alert('Error', error.message || 'Failed to buy likes');
+    Alert.alert(
+      isUnlimited ? 'Unlimited Plan' : 'Buy 5 Likes',
+      isUnlimited ? 'You have an active unlimited plan. Add 5 likes for free?' : 'Spend 100 coins to get 5 more likes?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Buy',
+          onPress: async () => {
+            try {
+              const res = await authAPI.buyLikes();
+              if (res.data?.success) {
+                if (!isUnlimited) setCoins(res.data.coins);
+                setLikesCount(res.data.likes);
+                Alert.alert('Success', 'Purchased 5 likes!');
+                onRefresh();
+              }
+            } catch (error: any) {
+              Alert.alert('Error', error.message || 'Failed to buy likes');
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const handleBuyChatSlot = async () => {
+    const isUnlimited = unlimitedCoinsExpiry && new Date(unlimitedCoinsExpiry) > new Date();
+
+    if (!isUnlimited && coins < 150) {
+      Alert.alert('Low Balance', 'Unlock a slot for 150 coins. Visit the shop!');
+      setShowShop(true);
+      return;
     }
+
+    Alert.alert(
+      isUnlimited ? 'Unlimited Plan' : 'Buy Chat Slot',
+      isUnlimited ? 'You have an active unlimited plan. Unlock this slot for free?' : 'Unlock a permanent chat slot for 150 coins?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Unlock',
+          onPress: async () => {
+            try {
+              const res = await authAPI.buyChatSlot();
+              if (res.data?.success) {
+                if (!isUnlimited) setCoins(res.data.coins);
+                setChatSlots(res.data.chatSlots);
+                Alert.alert('Success', 'Permanent chat slot unlocked!');
+              }
+            } catch (error: any) {
+              Alert.alert('Error', error.response?.data?.message || 'Failed to buy slot');
+            }
+          }
+        }
+      ]
+    );
   };
 
   // Show loading while checking profile status
@@ -261,13 +586,40 @@ export default function DatingScreen() {
     );
   }
 
+  // STRICT GATING: If profile not complete/terms not accepted, ONLY show modal/placeholder
+  if (!datingProfileComplete && !isLoading) {
+    return (
+      <View style={styles.container}>
+        <DatingTermsModal
+          visible={true} // Force visible
+          onAccept={handleAcceptTerms}
+          onDecline={handleDeclineTerms}
+        />
+        <View style={[styles.centered, { flex: 1 }]}>
+          <Sparkles size={48} color={LIME} />
+          <Text style={{ marginTop: 16, color: '#6B7280' }}>Please accept terms to continue...</Text>
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
-      {/* Dating Terms Modal */}
-      <DatingTermsModal
-        visible={showTermsModal}
-        onAccept={handleAcceptTerms}
-        onDecline={handleDeclineTerms}
+      {/* Timer Modal */}
+      <DatingTimerModal
+        visible={showTimerModal}
+        onClose={() => setShowTimerModal(false)}
+        targetDate={TARGET_DATE}
+        onTimerEnd={() => setShowTimerModal(false)}
+      />
+
+      {/* Out of Likes Modal */}
+      <OutofLikesModal
+        visible={showOutofLikesModal}
+        coins={coins}
+        onClose={() => setShowOutofLikesModal(false)}
+        onBuy={handleBuyLikes}
+        nextRegenTime={nextRegenTime}
       />
 
       <View style={styles.centerWrapper}>
@@ -275,13 +627,18 @@ export default function DatingScreen() {
         <View style={styles.header}>
           <Text style={styles.headerTitle}>Dating Mode</Text>
           <View style={styles.headerRight}>
-            <TouchableOpacity style={styles.blindButton} onPress={() => setShowBlindDating(true)}>
+            <TouchableOpacity style={styles.blindButton} onPress={handleGoBlind}>
               <Sparkles size={14} color="white" />
               <Text style={styles.blindButtonText}>Go Blind</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.coinsButton} onPress={() => setShowShop(true)}>
-              <Coins size={14} color="black" />
-              <Text style={styles.coinsText}>{coins}</Text>
+            <TouchableOpacity
+              style={[styles.coinsButton, countdownText && { backgroundColor: '#8B5CF6' }]}
+              onPress={() => setShowShop(true)}
+            >
+              {countdownText ? <Sparkles size={14} color="white" /> : <Coins size={14} color="black" />}
+              <Text style={[styles.coinsText, countdownText && { color: 'white' }]}>
+                {countdownText || coins}
+              </Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.profileButton} onPress={() => router.push('/my-dating-profile')}>
               <User size={18} color="#111827" />
@@ -291,15 +648,24 @@ export default function DatingScreen() {
 
         {/* Tabs */}
         <View style={styles.tabsContainer}>
-          {['discover', 'chat', 'vibe'].map((tab) => (
+          {['suggest', 'chat', 'vibe'].map((tab) => (
             <TouchableOpacity
               key={tab}
-              onPress={() => setActiveTab(tab as any)}
+              onPress={() => {
+                if (tab === 'vibe') {
+                  const now = new Date();
+                  if (now < TARGET_DATE) {
+                    setShowTimerModal(true);
+                    return;
+                  }
+                }
+                setActiveTab(tab as any);
+              }}
               style={[styles.tab, activeTab === tab && styles.tabActive]}
             >
-              {tab === 'discover' && <Sparkles size={12} color={activeTab === tab ? 'white' : '#6B7280'} />}
+              {tab === 'suggest' && <Sparkles size={12} color={activeTab === tab ? 'white' : '#6B7280'} />}
               <Text style={[styles.tabText, activeTab === tab && styles.tabTextActive]}>
-                {tab === 'vibe' ? 'My Vibe' : tab === 'chat' ? 'Chat' : 'Discover'}
+                {tab === 'vibe' ? 'My Vibe' : tab === 'chat' ? 'Chat' : 'Suggest'}
               </Text>
             </TouchableOpacity>
           ))}
@@ -312,9 +678,49 @@ export default function DatingScreen() {
           showsVerticalScrollIndicator={false}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         >
-          {activeTab === 'vibe' && <MyVibeTab currentMatch={currentMatch} onViewProfile={() => setSelectedProfile(currentMatch)} />}
-          {activeTab === 'chat' && <ChatTab currentMatch={currentMatch} receivedLikes={receivedLikes} onRefreshLikes={fetchReceivedLikes} coins={coins} setCoins={setCoins} chatSlots={chatSlots} activeChatCount={activeChatCount} />}
-          {activeTab === 'discover' && <DiscoverTab suggestions={recommendations} onSelect={setSelectedProfile} likesCount={likesCount} onSendLike={handleSendLike} onBuyLikes={handleBuyLikes} />}
+          {activeTab === 'vibe' && <MyVibeTab
+            matches={vibeMatches}
+            viewMode={vibeViewMode}
+            setViewMode={setVibeViewMode}
+            onSelect={(match) => {
+              setCurrentMatch({
+                _id: match._id,
+                fullName: match.fullName,
+                profileImage: match.profileImage,
+                likeId: match.likeId,
+                interests: []
+              });
+              setActiveTab('chat');
+            }}
+          />}
+          {activeTab === 'chat' && (
+            <ChatTab
+              currentMatch={currentMatch}
+              receivedLikes={receivedLikes}
+              onRefreshLikes={fetchReceivedLikes}
+              coins={coins}
+              setCoins={setCoins}
+              chatSlots={chatSlots}
+              activeChatCount={activeChatCount}
+              onUnlockSlots={handleBuyChatSlot}
+              onUnmatch={handleUnmatch}
+              unlimitedCoinsExpiry={unlimitedCoinsExpiry}
+              countdownText={countdownText}
+              logFeatureUse={logFeatureUse}
+            />
+          )}
+          {activeTab === 'suggest' && (
+            <SuggestTab
+              suggestions={recommendations}
+              onSelect={setSelectedProfile}
+              likesCount={likesCount}
+              onSendLike={handleSendLike}
+              onBuyLikes={handleBuyLikes}
+              onSwitchVibe={handleSwitchVibe}
+              nextRegenTime={nextRegenTime}
+              logFeatureUse={logFeatureUse}
+            />
+          )}
         </ScrollView>
       </View>
 
@@ -335,6 +741,7 @@ export default function DatingScreen() {
       {showShop && (
         <CoinShopModal
           coins={coins}
+          countdownText={countdownText}
           onClose={() => setShowShop(false)}
           onBuy={handleBuyPacket}
         />
@@ -347,28 +754,90 @@ export default function DatingScreen() {
         coins={coins}
         onCoinsChange={setCoins}
       />
+
+
     </View>
   );
 }
 
-const MyVibeTab = ({ currentMatch, onViewProfile }: { currentMatch: Match | null, onViewProfile: () => void }) => {
-  if (!currentMatch) return <EmptyState icon={Heart} title="No active vibe" subtitle="Go to Discover to find someone!" />;
+const MyVibeTab = ({ matches, viewMode, setViewMode, onSelect }: {
+  matches: any[],
+  viewMode: 'grid' | 'list',
+  setViewMode: (m: 'grid' | 'list') => void,
+  onSelect: (m: any) => void
+}) => {
+  if (!matches || matches.length === 0) return <EmptyState icon={Heart} title="No active vibes" subtitle="Suggest someone to find a match!" />;
+
   return (
-    <Animated.View entering={FadeIn} style={styles.vibeContainer}>
-      <View style={styles.matchCard}>
-        <Image source={getAvatarSource(currentMatch.profileImage)} style={styles.matchImage} />
-        <LinearGradient colors={['transparent', 'rgba(0,0,0,0.9)']} style={StyleSheet.absoluteFillObject} />
-        <View style={styles.activeBadge}><Text style={styles.activeBadgeText}>Active Vibe</Text></View>
-        <View style={styles.matchInfo}>
-          <Text style={styles.matchName}>{currentMatch.fullName || 'Anonymous'}, {currentMatch.year}</Text>
-          <Text style={styles.matchCollege}>{currentMatch.college}</Text>
-          <Text style={styles.matchBio}>{currentMatch.bio}</Text>
-          <View style={styles.interestsRow}>
-            {currentMatch.interests?.map(i => <View key={i} style={styles.interestBadge}><Text style={styles.interestBadgeText}>{i}</Text></View>)}
-          </View>
+    <Animated.View entering={FadeIn} style={styles.vibeListContainer} key={viewMode}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+        <Text style={styles.vibeSectionTitle}>Your Mutual Matches ({matches.length})</Text>
+        <View style={styles.viewToggle}>
+          <TouchableOpacity
+            style={[styles.toggleBtn, viewMode === 'grid' && styles.toggleBtnActive]}
+            onPress={() => setViewMode('grid')}
+          >
+            <Sparkles size={14} color={viewMode === 'grid' ? 'white' : '#6B7280'} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.toggleBtn, viewMode === 'list' && styles.toggleBtnActive]}
+            onPress={() => setViewMode('list')}
+          >
+            <MessageCircle size={14} color={viewMode === 'list' ? 'white' : '#6B7280'} />
+          </TouchableOpacity>
         </View>
       </View>
-      <TouchableOpacity style={styles.viewProfileButton} onPress={onViewProfile}><Text style={styles.viewProfileText}>View Full Profile</Text></TouchableOpacity>
+
+      {viewMode === 'grid' ? (
+        <View style={styles.vibeGrid}>
+          {matches.map((match) => (
+            <TouchableOpacity
+              key={match.likeId}
+              style={styles.vibeListItem}
+              onPress={() => onSelect({ _id: match.partnerId, fullName: match.partnerName, profileImage: match.partnerImage, likeId: match.likeId })}
+            >
+              <View style={[styles.vibeAvatarContainer, match.isBlindMatch && { borderColor: '#8B5CF6' }]}>
+                <Image source={getAvatarSource(match.partnerImage)} style={styles.vibeAvatar} />
+                {match.isBlindMatch && (
+                  <View style={styles.blindIndicator}>
+                    <Sparkles size={10} color="white" />
+                  </View>
+                )}
+                <View style={styles.activeVibeBadge} />
+              </View>
+              <Text style={styles.vibePartnerName} numberOfLines={1}>{match.partnerName}</Text>
+              <Text style={styles.vibeTime}>{new Date(match.lastMessageTime).toLocaleDateString()}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      ) : (
+        <ScrollView showsVerticalScrollIndicator={false}>
+          {matches.map((match) => (
+            <TouchableOpacity
+              key={match.likeId}
+              style={styles.vibeListRow}
+              onPress={() => onSelect({ _id: match.partnerId, fullName: match.partnerName, profileImage: match.partnerImage, likeId: match.likeId })}
+            >
+              <View style={[styles.vibeRowAvatarContainer, match.isBlindMatch && { borderColor: '#8B5CF6' }]}>
+                <Image source={getAvatarSource(match.partnerImage)} style={styles.vibeRowAvatar} />
+                {match.isBlindMatch && (
+                  <View style={styles.blindIndicatorRow}>
+                    <Sparkles size={8} color="white" />
+                  </View>
+                )}
+              </View>
+              <View style={styles.vibeRowInfo}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Text style={styles.vibeRowName}>{match.partnerName}</Text>
+                  <Text style={styles.vibeRowTime}>{new Date(match.lastMessageTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>
+                </View>
+                <Text style={styles.vibeRowMsg} numberOfLines={1}>{match.lastMessageText}</Text>
+              </View>
+              {match.unreadCount > 0 && <View style={styles.unreadDot} />}
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      )}
     </Animated.View>
   );
 };
@@ -380,15 +849,25 @@ const ChatTab = ({
   coins,
   setCoins,
   chatSlots,
-  activeChatCount
+  activeChatCount,
+  onUnlockSlots,
+  onUnmatch,
+  unlimitedCoinsExpiry,
+  countdownText,
+  logFeatureUse
 }: {
   currentMatch: Match | null;
   receivedLikes: any[];
-  onRefreshLikes: () => void;
+  onRefreshLikes: () => void | Promise<void>;
   coins: number;
   setCoins: React.Dispatch<React.SetStateAction<number>>;
   chatSlots: number;
   activeChatCount: number;
+  onUnlockSlots: () => void;
+  onUnmatch: (likeId: string) => void;
+  unlimitedCoinsExpiry: Date | null;
+  countdownText: string | null;
+  logFeatureUse: (name: string, details?: any) => void;
 }) => {
   const [messages, setMessages] = useState<any[]>([]);
   const [inputText, setInputText] = useState('');
@@ -414,10 +893,14 @@ const ChatTab = ({
   };
 
   const fetchMessages = async () => {
-    if (!currentMatch) return;
+    if (!currentMatch || !currentMatch._id) return;
     try {
       const res = await authAPI.getMessages(currentMatch._id);
       setMessages(res.data);
+      // Mark as read
+      if (res.data.some((m: any) => !m.read && m.sender !== currentUserId)) {
+        await authAPI.markMessagesRead(currentMatch._id);
+      }
     } catch (error) {
       console.error(error);
     }
@@ -435,62 +918,200 @@ const ChatTab = ({
   };
 
   const handleReveal = async (like: any) => {
-    if (coins < 70) {
+    const isUnlimited = unlimitedCoinsExpiry && new Date(unlimitedCoinsExpiry) > new Date();
+
+    if (!isUnlimited && coins < 70) {
       Alert.alert('Not Enough Coins', 'You need 70 coins to reveal this profile.');
       return;
     }
-    try {
-      const res = await authAPI.revealProfile(like._id);
-      if (res.data?.success) {
-        setCoins(res.data.coins);
-        onRefreshLikes();
-        Alert.alert('Revealed!', 'You can now see who liked you.');
-      }
-    } catch (error: any) {
-      Alert.alert('Error', error.message || 'Failed to reveal');
-    }
+
+    Alert.alert(
+      isUnlimited ? 'Unlimited Plan' : 'Reveal Profile',
+      isUnlimited ? 'You have an active unlimited plan. Reveal this profile for free?' : 'Reveal who liked you for 70 coins?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Reveal',
+          onPress: async () => {
+            try {
+              const res = await authAPI.revealProfile(like._id);
+              if (res.data?.success) {
+                logFeatureUse('reveal_profile', { from: 'chat_tab' });
+                if (!isUnlimited) setCoins(res.data.coins);
+                onRefreshLikes();
+                Alert.alert('Revealed!', 'You can now see who liked you.');
+              }
+            } catch (error: any) {
+              Alert.alert('Error', error.message || 'Failed to reveal');
+            }
+          }
+        }
+      ]
+    );
   };
 
   const handleStartChat = async (like: any) => {
     if (activeChatCount >= chatSlots) {
-      Alert.alert('No Chat Slots', 'Buy more chat slots to start a new chat.');
+      Alert.alert(
+        'No Chat Slots',
+        'Buy more chat slots to continue matching.',
+        [{ text: 'Buy Slot', onPress: onUnlockSlots }, { text: 'Cancel', style: 'cancel' }]
+      );
       return;
     }
-    if (coins < 100) {
+
+    const isUnlimited = unlimitedCoinsExpiry && new Date(unlimitedCoinsExpiry) > new Date();
+
+    if (!isUnlimited && coins < 100) {
       Alert.alert('Not Enough Coins', 'You need 100 coins to start a chat.');
       return;
     }
-    try {
-      const res = await authAPI.startChatFromLike(like._id);
-      if (res.data?.success) {
-        setCoins(res.data.coins);
-        onRefreshLikes();
-        Alert.alert('Chat Started!', 'You can now message each other.');
-      }
-    } catch (error: any) {
-      Alert.alert('Error', error.message || 'Failed to start chat');
-    }
+
+    Alert.alert(
+      isUnlimited ? 'Unlimited Plan' : 'Start Chat',
+      isUnlimited ? 'You have an active unlimited plan. Start chat for free?' : 'Spend 100 coins to start this chat?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Start',
+          onPress: async () => {
+            try {
+              const res = await authAPI.startChatFromLike(like._id);
+              if (res.data?.success) {
+                logFeatureUse('start_chat', { type: 'match' });
+                if (!isUnlimited) setCoins(res.data.coins);
+                onRefreshLikes();
+                Alert.alert('Chat Started!', 'You can now message each other.');
+              }
+            } catch (error: any) {
+              Alert.alert('Error', error.message || 'Failed to start chat');
+            }
+          }
+        }
+      ]
+    );
   };
 
   const handleDirectChat = async (like: any) => {
     if (activeChatCount >= chatSlots) {
-      Alert.alert('No Chat Slots', 'Buy more chat slots to start a new chat.');
+      Alert.alert(
+        'No Chat Slots',
+        'Buy more chat slots to start a new chat.',
+        [{ text: 'Buy Slot', onPress: onUnlockSlots }, { text: 'Cancel', style: 'cancel' }]
+      );
       return;
     }
-    if (coins < 150) {
+
+    const isUnlimited = unlimitedCoinsExpiry && new Date(unlimitedCoinsExpiry) > new Date();
+
+    if (!isUnlimited && coins < 150) {
       Alert.alert('Not Enough Coins', 'You need 150 coins for direct chat.');
       return;
     }
+
+    Alert.alert(
+      isUnlimited ? 'Unlimited Plan' : 'Direct Chat',
+      isUnlimited ? 'You have an active unlimited plan. Direct chat for free?' : 'Spend 150 coins for immediate direct chat?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Start',
+          onPress: async () => {
+            try {
+              const res = await authAPI.directChat(like._id);
+              if (res.data?.success) {
+                if (!isUnlimited) setCoins(res.data.coins);
+                onRefreshLikes();
+                Alert.alert('Success!', 'Profile revealed and chat started!');
+              }
+            } catch (error: any) {
+              Alert.alert('Error', error.message || 'Failed');
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const handleSkip = async (like: any) => {
     try {
-      const res = await authAPI.directChat(like._id);
-      if (res.data?.success) {
-        setCoins(res.data.coins);
-        onRefreshLikes();
-        Alert.alert('Success!', 'Profile revealed and chat started!');
-      }
-    } catch (error: any) {
-      Alert.alert('Error', error.message || 'Failed');
+      await authAPI.declineLike(like._id);
+      setSelectedLike(null);
+      onRefreshLikes();
+    } catch (error) {
+      console.error('Error skipping like:', error);
     }
+  };
+
+  const handleDeleteChat = () => {
+    if (!currentMatch) return;
+    Alert.alert(
+      "Delete Conversation?",
+      "This will permanently delete all messages and free up your chat slot.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await authAPI.deleteConversation(currentMatch._id);
+              onUnmatch(currentMatch.likeId || '');
+              Alert.alert("Deleted", "Conversation deleted.");
+            } catch (error) {
+              Alert.alert("Error", "Failed to delete conversation");
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const handleReport = () => {
+    if (!currentMatch) return;
+    Alert.prompt(
+      "Report User",
+      "Why are you reporting this user?",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Report",
+          onPress: async (reason?: string) => {
+            if (!reason || !currentMatch) return;
+            try {
+              await authAPI.reportUser(currentMatch._id, reason);
+              Alert.alert("Reported", "Thank you for reporting. Our team will investigate.");
+            } catch (error) {
+              Alert.alert("Error", "Failed to submit report");
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const handleBlock = () => {
+    if (!currentMatch) return;
+    Alert.alert(
+      "Block User?",
+      "You won't see this user again and they won't be able to message you.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Block",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await authAPI.blockUser(currentMatch._id);
+              onUnmatch(currentMatch.likeId || '');
+              Alert.alert("Blocked", "User blocked successfully.");
+            } catch (error) {
+              Alert.alert("Error", "Failed to block user");
+            }
+          }
+        }
+      ]
+    );
   };
 
   // Show received likes section
@@ -499,10 +1120,20 @@ const ChatTab = ({
 
   return (
     <View style={styles.chatContainer}>
+      {/* Slot Allocation Indicator */}
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+        <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#111827' }}>Messages</Text>
+        <View style={{ backgroundColor: '#F3F4F6', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 }}>
+          <Text style={{ fontSize: 12, fontWeight: '600', color: '#4B5563' }}>
+            Slots: {activeChatCount} / {chatSlots} Used
+          </Text>
+        </View>
+      </View>
+
       {/* Received Likes Section */}
       {(pendingLikes.length > 0 || revealedLikes.length > 0) && (
         <View style={{ marginBottom: 16 }}>
-          <Text style={{ fontSize: 16, fontWeight: 'bold', marginBottom: 12 }}>
+          <Text style={{ fontSize: 14, color: '#6B7280', marginBottom: 12 }}>
             {pendingLikes.length + revealedLikes.length} people liked you ❤️
           </Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
@@ -565,6 +1196,12 @@ const ChatTab = ({
                 <TouchableOpacity style={[styles.switchButton, { backgroundColor: PINK }]} onPress={() => handleDirectChat(selectedLike)}>
                   <Text style={[styles.switchButtonText, { color: 'white' }]}>💬 Direct Chat (150 coins)</Text>
                 </TouchableOpacity>
+                <TouchableOpacity
+                  style={{ marginTop: 12, paddingVertical: 8, alignItems: 'center' }}
+                  onPress={() => handleSkip(selectedLike)}
+                >
+                  <Text style={{ color: '#6B7280', fontSize: 14, fontWeight: '500' }}>Not interested / Skip</Text>
+                </TouchableOpacity>
               </>
             ) : (
               <>
@@ -591,14 +1228,38 @@ const ChatTab = ({
               <Text style={styles.chatName}>{currentMatch.fullName || 'User'}</Text>
               <Text style={styles.activeStatus}>Active now</Text>
             </View>
+            <TouchableOpacity
+              style={{ padding: 8 }}
+              onPress={() => {
+                Alert.alert(
+                  "Safety & Controls",
+                  "What would you like to do?",
+                  [
+                    { text: "Cancel", style: "cancel" },
+                    { text: "Report User", style: "default", onPress: handleReport },
+                    { text: "Block User", style: "destructive", onPress: handleBlock },
+                    { text: "Delete Chat", style: "destructive", onPress: handleDeleteChat },
+                  ]
+                )
+              }}
+            >
+              <ShieldAlert size={20} color="#6B7280" />
+            </TouchableOpacity>
           </View>
 
           <ScrollView style={styles.messagesScroll} contentContainerStyle={styles.messagesContainer}>
             {messages.map((msg, index) => {
               const isMe = msg.sender === currentUserId;
               return (
-                <View key={index} style={[styles.messageBubble, isMe ? styles.myMessage : styles.theirMessage]}>
-                  <Text style={[styles.messageText, isMe && { color: 'white' }]}>{msg.text}</Text>
+                <View key={index} style={{ alignItems: isMe ? 'flex-end' : 'flex-start', marginBottom: 8 }}>
+                  <View style={[styles.messageBubble, isMe ? styles.myMessage : styles.theirMessage]}>
+                    <Text style={[styles.messageText, isMe && { color: 'white' }]}>{msg.text}</Text>
+                  </View>
+                  {isMe && (
+                    <Text style={{ fontSize: 10, color: '#9CA3AF', marginRight: 4, marginTop: 2 }}>
+                      {msg.read ? 'Read' : 'Sent'}
+                    </Text>
+                  )}
                 </View>
               );
             })}
@@ -621,8 +1282,9 @@ const ChatTab = ({
         !pendingLikes.length && !revealedLikes.length && (
           <EmptyState icon={MessageCircle} title="Start Chatting" subtitle="Match with someone to chat" />
         )
-      )}
-    </View>
+      )
+      }
+    </View >
   );
 };
 
@@ -836,78 +1498,84 @@ const SwipeableProfileCard = ({
   );
 };
 
-const DiscoverTab = ({
+const SuggestTab = ({
   suggestions,
   onSelect,
-  onSwipeAction,
   likesCount,
   onSendLike,
-  onBuyLikes
+  onBuyLikes,
+  onSwitchVibe,
+  nextRegenTime,
+  logFeatureUse
 }: {
   suggestions: Match[],
   onSelect: (m: Match) => void,
-  onSwipeAction?: (profile: Match, action: 'like' | 'pass') => void,
   likesCount: number,
   onSendLike: (targetUser: Match) => void,
-  onBuyLikes: () => void
+  onBuyLikes: () => void,
+  onSwitchVibe: (m: Match) => void,
+  nextRegenTime: Date | null,
+  logFeatureUse: (name: string, details?: any) => void;
 }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
 
   const handleSwipeRight = useCallback(() => {
     const profile = suggestions[currentIndex];
     if (profile) {
-      onSwipeAction?.(profile, 'like');
       onSendLike(profile);
     }
     setCurrentIndex(prev => prev + 1);
-  }, [currentIndex, suggestions, onSelect, onSwipeAction, onSendLike]);
+  }, [currentIndex, suggestions, onSendLike]);
 
   const handleSwipeLeft = useCallback(() => {
     const profile = suggestions[currentIndex];
-    if (profile) {
-      onSwipeAction?.(profile, 'pass');
-    }
+    // Optional: Call backend to "pass"
     setCurrentIndex(prev => prev + 1);
-  }, [currentIndex, suggestions, onSwipeAction]);
+  }, [currentIndex, suggestions]);
 
-  const handleButtonLike = () => {
-    handleSwipeRight();
-  };
-
-  const handleButtonPass = () => {
-    handleSwipeLeft();
+  const handleStarAction = () => {
+    const profile = suggestions[currentIndex];
+    if (profile) {
+      onSwitchVibe(profile);
+      setCurrentIndex(prev => prev + 1);
+    }
   };
 
   const currentProfile = suggestions[currentIndex];
   const nextProfile = suggestions[currentIndex + 1];
 
   if (!currentProfile) {
-    return <EmptyState icon={Heart} title="No more profiles" subtitle="Check back later for more vibes!" />;
+    return <EmptyState icon={Sparkles} title="No more suggestions" subtitle="Check back later for more vibes!" />;
   }
 
+  const getTimeUntilRegen = () => {
+    if (!nextRegenTime) return null;
+    const diff = nextRegenTime.getTime() - new Date().getTime();
+    if (diff <= 0) return '0h 0m';
+    const hours = Math.floor(diff / (1000 * 60 * 60));
+    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+    return `${hours}h ${minutes}m`;
+  };
+
+  const regenText = getTimeUntilRegen();
+
   return (
-    <View style={styles.discoverContainer}>
-      {/* Likes Count Badge */}
-      <View style={{
-        position: 'absolute',
-        top: 10,
-        right: 16,
-        zIndex: 10,
-        flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: 'rgba(0,0,0,0.6)',
-        paddingHorizontal: 12,
-        paddingVertical: 6,
-        borderRadius: 20
-      }}>
-        <Heart size={16} color="#F43F5E" fill="#F43F5E" />
-        <Text style={{ color: 'white', fontWeight: 'bold', marginLeft: 6 }}>{likesCount} Likes</Text>
-        <TouchableOpacity onPress={onBuyLikes} style={{ marginLeft: 8, backgroundColor: '#F43F5E', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10 }}>
-          <Text style={{ color: 'white', fontSize: 10, fontWeight: 'bold' }}>+</Text>
+    <View style={styles.suggestContainer}>
+      {/* Likes Count Header */}
+      <View style={styles.suggestHeader}>
+        <View style={styles.likesBadgeContainer}>
+          <View style={styles.likesBadge}>
+            <Heart size={14} color="#F43F5E" fill="#F43F5E" />
+            <Text style={styles.likesBadgeText}>{likesCount} Likes Available</Text>
+          </View>
+          {likesCount < 10 && regenText && (
+            <Text style={styles.regenTimerText}>Next refresh in {regenText}</Text>
+          )}
+        </View>
+        <TouchableOpacity onPress={onBuyLikes} style={styles.buyLikesBtn}>
+          <Text style={styles.buyLikesBtnText}>Get More</Text>
         </TouchableOpacity>
       </View>
-
-      <Text style={styles.discoverHint}>Swipe right to like, left to pass</Text>
 
       <View style={styles.cardsContainer}>
         {/* Next card (behind) */}
@@ -915,16 +1583,10 @@ const DiscoverTab = ({
           <View style={[styles.swipeCard, styles.nextCard]}>
             <View style={styles.heroPhotoContainer}>
               <Image
-                source={{ uri: nextProfile.datingPhotos?.[0] || nextProfile.profileImage }}
+                source={getAvatarSource(nextProfile.datingPhotos?.[0] || nextProfile.profileImage)}
                 style={styles.heroPhoto}
               />
-              <LinearGradient
-                colors={['transparent', 'rgba(0,0,0,0.7)']}
-                style={styles.heroGradient}
-              />
-              <View style={styles.heroInfo}>
-                <Text style={styles.heroNameText}>{(nextProfile.fullName?.split(' ')[0] || nextProfile.username || 'A').charAt(0)}{(nextProfile.datingAge || nextProfile.age) ? `, ${nextProfile.datingAge || nextProfile.age}` : ''}</Text>
-              </View>
+              <LinearGradient colors={['transparent', 'rgba(0,0,0,0.7)']} style={styles.heroGradient} />
             </View>
           </View>
         )}
@@ -941,14 +1603,71 @@ const DiscoverTab = ({
 
       {/* Action Buttons */}
       <View style={styles.actionButtons}>
-        <TouchableOpacity style={styles.passButton} onPress={handleButtonPass}>
+        <TouchableOpacity style={styles.rejectBtn} onPress={handleSwipeLeft}>
           <X size={28} color="#EF4444" />
         </TouchableOpacity>
-        <TouchableOpacity style={styles.likeButton} onPress={handleButtonLike}>
+
+        <TouchableOpacity style={styles.starBtn} onPress={handleStarAction}>
+          <Sparkles size={32} color="white" fill="white" />
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.likeBtn} onPress={handleSwipeRight}>
           <Heart size={28} color="#10B981" fill="#10B981" />
         </TouchableOpacity>
       </View>
     </View>
+  );
+};
+
+const OutofLikesModal = ({ visible, coins, onClose, onBuy, nextRegenTime }: any) => {
+  const isLowBalance = coins < 100;
+
+  const getTimeUntilRegen = () => {
+    if (!nextRegenTime) return "24h";
+    const diff = nextRegenTime.getTime() - new Date().getTime();
+    if (diff <= 0) return "0h";
+    const hours = Math.floor(diff / (1000 * 60 * 60));
+    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+    return `${hours}h ${minutes}m`;
+  };
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <View style={styles.modalOverlay}>
+        <Animated.View entering={SlideInUp} style={[styles.modalContent, { paddingBottom: 40 }]}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Out of Likes!</Text>
+            <TouchableOpacity onPress={onClose}><X size={24} color="black" /></TouchableOpacity>
+          </View>
+
+          <View style={{ alignItems: 'center', marginVertical: 24 }}>
+            <View style={{ width: 100, height: 100, borderRadius: 50, backgroundColor: '#FFF1F2', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
+              <Heart size={48} color="#F43F5E" fill="#F43F5E" />
+            </View>
+            <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#111827', textAlign: 'center' }}>You've used all your likes</Text>
+            <Text style={{ fontSize: 14, color: '#6B7280', textAlign: 'center', marginTop: 8, paddingHorizontal: 20 }}>
+              Don't miss out on a potential match. Your daily likes will refresh in <Text style={{ color: '#F43F5E', fontWeight: 'bold' }}>{getTimeUntilRegen()}</Text>.
+            </Text>
+          </View>
+
+          <TouchableOpacity
+            onPress={onBuy}
+            disabled={isLowBalance}
+            style={[styles.switchButton, { backgroundColor: '#F43F5E' }, isLowBalance && styles.switchButtonDisabled]}
+          >
+            <Text style={[styles.switchButtonText, { color: 'white' }]}>Get 5 More Likes (100 Coins)</Text>
+          </TouchableOpacity>
+
+          {isLowBalance && (
+            <Text style={styles.lowBalanceText}>Not enough coins! Visit the shop.</Text>
+          )}
+
+          <TouchableOpacity onPress={onClose} style={{ marginTop: 16, alignItems: 'center' }}>
+            <Text style={{ color: '#6B7280', fontSize: 14, fontWeight: '500' }}>Maybe later</Text>
+          </TouchableOpacity>
+        </Animated.View>
+      </View>
+    </Modal>
   );
 };
 
@@ -996,11 +1715,11 @@ const ProfilePreviewModal = ({ profile, coins, chatSlots, activeChatCount, onClo
   );
 };
 
-const CoinShopModal = ({ coins, onClose, onBuy }: any) => {
+const CoinShopModal = ({ coins, countdownText, onClose, onBuy }: any) => {
   const packages = [
-    { amount: 100, price: 50, popular: false },
-    { amount: 500, price: 200, popular: true },
-    { amount: 1200, price: 400, popular: false },
+    { amount: 150, price: 19, popular: false, packType: 'coins' },
+    { amount: 600, price: 49, popular: true, packType: 'coins' },
+    { amount: 'Unlimited', price: 299, popular: false, packType: 'unlimited', subtitle: '7 Days Access' },
   ];
 
   return (
@@ -1015,8 +1734,13 @@ const CoinShopModal = ({ coins, onClose, onBuy }: any) => {
         </View>
 
         <View style={styles.coinBalanceCard}>
-          <Text style={styles.coinBalanceLabel}>Current Balance</Text>
-          <Text style={styles.coinBalanceValue}>{coins} Coins</Text>
+          <Text style={styles.coinBalanceLabel}>{countdownText ? 'Unlimited Access' : 'Current Balance'}</Text>
+          <Text style={[styles.coinBalanceValue, countdownText && { color: '#8B5CF6' }]}>
+            {countdownText || `${coins} Coins`}
+          </Text>
+          {countdownText && (
+            <Text style={{ fontSize: 12, color: '#6B7280', marginTop: 4 }}>Expiry: {countdownText}</Text>
+          )}
         </View>
 
         <Text style={styles.shopSectionTitle}>Buy Coins</Text>
@@ -1025,7 +1749,7 @@ const CoinShopModal = ({ coins, onClose, onBuy }: any) => {
           {packages.map((pkg, index) => (
             <TouchableOpacity
               key={index}
-              onPress={() => onBuy(pkg.amount, pkg.price)}
+              onPress={() => onBuy(typeof pkg.amount === 'number' ? pkg.amount : 0, pkg.price, pkg.packType)}
               style={[styles.shopCard, pkg.popular && styles.shopCardPopular]}
             >
               {pkg.popular && (
@@ -1033,8 +1757,15 @@ const CoinShopModal = ({ coins, onClose, onBuy }: any) => {
                   <Text style={styles.popularText}>Best Value</Text>
                 </View>
               )}
-              <Coins size={32} color="#F59E0B" style={{ marginBottom: 12 }} />
-              <Text style={styles.shopAmount}>{pkg.amount} Coins</Text>
+              {pkg.packType === 'unlimited' ? (
+                <Sparkles size={32} color="#8B5CF6" style={{ marginBottom: 12 }} />
+              ) : (
+                <Coins size={32} color="#F59E0B" style={{ marginBottom: 12 }} />
+              )}
+              <View style={{ flex: 1, marginLeft: 12 }}>
+                <Text style={styles.shopAmount}>{pkg.amount}{pkg.packType === 'coins' ? ' Coins' : ''}</Text>
+                {pkg.subtitle && <Text style={{ fontSize: 12, color: '#6B7280' }}>{pkg.subtitle}</Text>}
+              </View>
               <Text style={styles.shopPrice}>₹{pkg.price}</Text>
             </TouchableOpacity>
           ))}
@@ -1181,4 +1912,47 @@ const styles = StyleSheet.create({
   shopNote: { textAlign: 'center', fontSize: 12, color: '#9CA3AF', marginTop: 24 },
   popularBadge: { position: 'absolute', top: -10, left: 16, backgroundColor: '#F59E0B', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8 },
   popularText: { color: 'white', fontSize: 10, fontWeight: 'bold' },
+
+  // New Vibe Tab Styles
+  vibeListContainer: { flex: 1, padding: 4 },
+  vibeSectionTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 16, color: '#111827' },
+  vibeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
+  vibeListItem: { width: (width - 60) / 3, alignItems: 'center', marginBottom: 20 },
+  vibeAvatarContainer: { width: 80, height: 80, borderRadius: 40, position: 'relative', marginBottom: 8, borderWidth: 2, borderColor: LIME },
+  vibeAvatar: { width: '100%', height: '100%', borderRadius: 40 },
+  activeVibeBadge: { position: 'absolute', bottom: 2, right: 2, width: 14, height: 14, borderRadius: 7, backgroundColor: LIME, borderWidth: 2, borderColor: 'white' },
+  vibePartnerName: { fontSize: 13, fontWeight: '600', color: '#111827', textAlign: 'center' },
+  vibeTime: { fontSize: 11, color: '#9CA3AF' },
+
+  // New Suggest Tab Styles
+  suggestContainer: { flex: 1 },
+  suggestHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, paddingHorizontal: 4 },
+  likesBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#FFF1F2', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
+  likesBadgeText: { color: '#F43F5E', fontSize: 12, fontWeight: '700' },
+  likesBadgeContainer: { gap: 4 },
+  regenTimerText: { fontSize: 10, color: '#9CA3AF', marginLeft: 4 },
+  buyLikesBtn: { backgroundColor: '#F43F5E', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 },
+  buyLikesBtnText: { color: 'white', fontSize: 11, fontWeight: 'bold' },
+  rejectBtn: { width: 64, height: 64, borderRadius: 32, backgroundColor: 'white', alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 8, elevation: 4, borderWidth: 1, borderColor: '#FEE2E2' },
+  starBtn: { width: 80, height: 80, borderRadius: 40, backgroundColor: '#8B5CF6', alignItems: 'center', justifyContent: 'center', shadowColor: '#8B5CF6', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.3, shadowRadius: 12, elevation: 8, marginTop: -10 },
+  likeBtn: { width: 64, height: 64, borderRadius: 32, backgroundColor: 'white', alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 8, elevation: 4, borderWidth: 1, borderColor: '#DCFCE7' },
+
+  // Vibe Toggle
+  viewToggle: { flexDirection: 'row', backgroundColor: '#F3F4F6', borderRadius: 10, padding: 4 },
+  toggleBtn: { padding: 6, borderRadius: 8 },
+  toggleBtnActive: { backgroundColor: '#8B5CF6', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2, elevation: 1 },
+
+  // Blind Indicators
+  blindIndicator: { position: 'absolute', top: -4, left: -4, backgroundColor: '#8B5CF6', width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: 'white' },
+  blindIndicatorRow: { position: 'absolute', top: -2, left: -2, backgroundColor: '#8B5CF6', width: 16, height: 16, borderRadius: 8, alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: 'white' },
+
+  // List View Styles
+  vibeListRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 8, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
+  vibeRowAvatarContainer: { width: 56, height: 56, borderRadius: 28, borderWidth: 2, borderColor: LIME, padding: 2 },
+  vibeRowAvatar: { width: '100%', height: '100%', borderRadius: 28 },
+  vibeRowInfo: { flex: 1, marginLeft: 16 },
+  vibeRowName: { fontSize: 16, fontWeight: 'bold', color: '#111827' },
+  vibeRowTime: { fontSize: 11, color: '#9CA3AF' },
+  vibeRowMsg: { fontSize: 13, color: '#6B7280', marginTop: 2 },
+  unreadDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#8B5CF6', marginLeft: 8 },
 });

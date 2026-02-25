@@ -7,9 +7,12 @@ type UserData = {
     _id: string;
     fullName: string;
     username: string;
+    email: string;
     phoneNumber: string;
     coins: number;
     isAdmin: boolean;
+    isBanned?: boolean;
+    isVerified?: boolean;
     createdAt: string;
 };
 
@@ -38,7 +41,8 @@ export default function Users() {
         u =>
             u.fullName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
             u.phoneNumber?.includes(searchTerm) ||
-            u.username?.toLowerCase().includes(searchTerm.toLowerCase())
+            u.username?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            u.email?.toLowerCase().includes(searchTerm.toLowerCase())
     );
 
     return (
@@ -49,7 +53,7 @@ export default function Users() {
                     <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
                     <input
                         type="text"
-                        placeholder="Search name, phone..."
+                        placeholder="Search name, email, phone..."
                         className="pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 w-64"
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
@@ -63,6 +67,7 @@ export default function Users() {
                         <thead className="bg-gray-50 border-b border-gray-100">
                             <tr>
                                 <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">User</th>
+                                <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Email</th>
                                 <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Phone Number</th>
                                 <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Coins</th>
                                 <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Role</th>
@@ -72,9 +77,9 @@ export default function Users() {
                         </thead>
                         <tbody className="divide-y divide-gray-100">
                             {loading ? (
-                                <tr><td colSpan={6} className="px-6 py-8 text-center text-gray-500">Loading users...</td></tr>
+                                <tr><td colSpan={7} className="px-6 py-8 text-center text-gray-500">Loading users...</td></tr>
                             ) : filteredUsers.length === 0 ? (
-                                <tr><td colSpan={6} className="px-6 py-8 text-center text-gray-500">No users found</td></tr>
+                                <tr><td colSpan={7} className="px-6 py-8 text-center text-gray-500">No users found</td></tr>
                             ) : (
                                 filteredUsers.map((user) => (
                                     <tr
@@ -93,8 +98,11 @@ export default function Users() {
                                                 </div>
                                             </div>
                                         </td>
+                                        <td className="px-6 py-4 text-sm text-gray-600 truncate max-w-[200px]">
+                                            {user.email || 'N/A'}
+                                        </td>
                                         <td className="px-6 py-4 text-sm text-gray-600 font-mono">
-                                            {user.phoneNumber}
+                                            {user.phoneNumber || 'N/A'}
                                         </td>
                                         <td className="px-6 py-4">
                                             <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
@@ -102,9 +110,21 @@ export default function Users() {
                                             </span>
                                         </td>
                                         <td className="px-6 py-4">
-                                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${user.isAdmin ? 'bg-indigo-100 text-indigo-800' : 'bg-gray-100 text-gray-800'}`}>
-                                                {user.isAdmin ? 'Admin' : 'User'}
-                                            </span>
+                                            <div className="flex flex-wrap gap-1">
+                                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${user.isAdmin ? 'bg-indigo-100 text-indigo-800' : 'bg-gray-100 text-gray-800'}`}>
+                                                    {user.isAdmin ? 'Admin' : 'User'}
+                                                </span>
+                                                {user.isVerified && (
+                                                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                                        Verified
+                                                    </span>
+                                                )}
+                                                {user.isBanned && (
+                                                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                                                        Banned
+                                                    </span>
+                                                )}
+                                            </div>
                                         </td>
                                         <td className="px-6 py-4 text-sm text-gray-500">
                                             {new Date(user.createdAt).toLocaleDateString()}
