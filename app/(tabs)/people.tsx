@@ -83,7 +83,10 @@ export default function PeopleScreen() {
               <Text style={styles.username}>@{user.username}</Text>
               {user.college && <Text style={styles.college}>{user.college}</Text>}
             </View>
-            <TouchableOpacity style={styles.viewButton}>
+            <TouchableOpacity
+              style={styles.viewButton}
+              onPress={() => router.push(`/user/${user._id}`)}
+            >
               <Text style={styles.viewButtonText}>View</Text>
             </TouchableOpacity>
           </TouchableOpacity>

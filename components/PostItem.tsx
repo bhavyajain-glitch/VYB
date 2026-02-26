@@ -1,6 +1,7 @@
-import { View, Text, Image, TouchableOpacity, StyleSheet } from 'react-native';
-import { Heart, MessageCircle, MoreHorizontal, MapPin, Send } from 'lucide-react-native';
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, FlatList, Dimensions } from 'react-native';
+import { Image } from 'expo-image';
+import { Heart, MessageCircle, MoreHorizontal, MapPin, Send, Bookmark } from 'lucide-react-native';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Animated, { FadeInDown, useAnimatedStyle, useSharedValue, withTiming, interpolate, Extrapolation, Easing } from 'react-native-reanimated';
 import { TapGestureHandler } from 'react-native-gesture-handler';
 import { useRouter } from 'expo-router';
@@ -8,8 +9,10 @@ import { authAPI } from '../services/api';
 import { getAvatarSource, getPostImageUrl } from '../utils/imageUtils';
 import { LinearGradient } from 'expo-linear-gradient';
 
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const IMAGE_WIDTH = Math.min(SCREEN_WIDTH - 24, 476); // Max width with 12px padding on each side
 
-export default function PostItem({ item, onComment, onOptions, currentUserId }: any) {
+function PostItemComponent({ item, onComment, onOptions, currentUserId }: any) {
   const router = useRouter();
 
   // Helper function to check if user liked the post (handles ObjectId vs string comparison)
@@ -24,6 +27,35 @@ export default function PostItem({ item, onComment, onOptions, currentUserId }: 
   const doubleTapRef = useRef(null);
 
   const [isFollowing, setIsFollowing] = useState(false);
+  const [isBookmarked, setIsBookmarked] = useState(false);
+  const [activeImageIndex, setActiveImageIndex] = useState(0);
+
+  // Get images array (supports both new multi-image and legacy single image)
+  // Priority: images array > allImages virtual > single image field
+  const images: string[] = React.useMemo(() => {
+    // Debug logging
+    console.log('📸 PostItem data:', {
+      postId: item._id,
+      username: item.user?.username,
+      hasImages: !!item.images,
+      imagesLength: item.images?.length,
+      hasAllImages: !!item.allImages,
+      allImagesLength: item.allImages?.length,
+      hasImage: !!item.image,
+      image: item.image?.substring(0, 50),
+    });
+
+    if (item.images && Array.isArray(item.images) && item.images.length > 0) {
+      return item.images;
+    }
+    if (item.allImages && Array.isArray(item.allImages) && item.allImages.length > 0) {
+      return item.allImages;
+    }
+    if (item.image) {
+      return [item.image];
+    }
+    return [];
+  }, [item.images, item.allImages, item.image]);
 
   useEffect(() => {
     if (currentUserId) {
@@ -48,6 +80,14 @@ export default function PostItem({ item, onComment, onOptions, currentUserId }: 
     authAPI.toggleLike(item._id).catch(err => {
       setIsLiked(!newStatus);
       setLikesCount((prev: number) => !newStatus ? prev + 1 : prev - 1);
+    });
+  };
+
+  const handleBookmark = () => {
+    const newStatus = !isBookmarked;
+    setIsBookmarked(newStatus);
+    authAPI.toggleBookmark(item._id).catch(() => {
+      setIsBookmarked(!newStatus);
     });
   };
 
@@ -105,14 +145,68 @@ export default function PostItem({ item, onComment, onOptions, currentUserId }: 
         </TouchableOpacity>
       </View>
 
-      {/* Main Image */}
+      {/* Main Image(s) - Carousel */}
       <TapGestureHandler
         waitFor={doubleTapRef}
         onActivated={onDoubleTap}
         numberOfTaps={2}
       >
         <View style={styles.imageContainer}>
-          <Image source={{ uri: getPostImageUrl(item.image) }} style={styles.postImage} resizeMode="cover" />
+          {images.length > 1 ? (
+            /* Multi-image carousel */
+            <>
+              <FlatList
+                data={images}
+                horizontal
+                pagingEnabled
+                showsHorizontalScrollIndicator={false}
+                onMomentumScrollEnd={(e) => {
+                  const index = Math.round(e.nativeEvent.contentOffset.x / IMAGE_WIDTH);
+                  setActiveImageIndex(index);
+                }}
+                keyExtractor={(_, index) => index.toString()}
+                renderItem={({ item: imageUrl }) => (
+                  <Image
+                    source={{ uri: getPostImageUrl(imageUrl) }}
+                    style={[styles.postImage, { width: IMAGE_WIDTH }]}
+                    contentFit="cover"
+                    transition={200}
+                    cachePolicy="memory-disk"
+                  />
+                )}
+              />
+              {/* Pagination dots */}
+              <View style={styles.paginationContainer}>
+                {images.map((_: any, index: number) => (
+                  <View
+                    key={index}
+                    style={[
+                      styles.paginationDot,
+                      index === activeImageIndex && styles.paginationDotActive
+                    ]}
+                  />
+                ))}
+              </View>
+              {/* Image counter badge */}
+              <View style={styles.imageCountBadge}>
+                <Text style={styles.imageCountText}>{activeImageIndex + 1}/{images.length}</Text>
+              </View>
+            </>
+          ) : images.length === 1 ? (
+            /* Single image */
+            <Image
+              source={{ uri: getPostImageUrl(images[0]) }}
+              style={styles.postImage}
+              contentFit="cover"
+              transition={200}
+              cachePolicy="memory-disk"
+            />
+          ) : (
+            /* No images - show placeholder */
+            <View style={[styles.postImage, { backgroundColor: '#E5E7EB', alignItems: 'center', justifyContent: 'center' }]}>
+              <Text style={{ color: '#9CA3AF' }}>No image available</Text>
+            </View>
+          )}
 
           {/* Heart Animation Overlay */}
           <Animated.View style={[styles.heartOverlay, rStyle]}>
@@ -133,6 +227,9 @@ export default function PostItem({ item, onComment, onOptions, currentUserId }: 
             <Text style={styles.actionCount}>{item.comments?.length || 0}</Text>
           </TouchableOpacity>
         </View>
+        <TouchableOpacity onPress={handleBookmark}>
+          <Bookmark size={24} color={isBookmarked ? '#8B5CF6' : '#111827'} fill={isBookmarked ? '#8B5CF6' : 'transparent'} />
+        </TouchableOpacity>
       </View>
 
       {/* Caption Section */}
@@ -273,5 +370,46 @@ const styles = StyleSheet.create({
   captionUserName: {
     fontWeight: '700',
     color: '#111827'
-  }
+  },
+  // Carousel pagination
+  paginationContainer: {
+    position: 'absolute',
+    bottom: 12,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 6,
+  },
+  paginationDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: 'rgba(255,255,255,0.5)',
+  },
+  paginationDotActive: {
+    backgroundColor: '#fff',
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  imageCountBadge: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  imageCountText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: '600',
+  },
 });
+
+// Memoize to prevent re-renders during scroll
+const PostItem = React.memo(PostItemComponent);
+export default PostItem;

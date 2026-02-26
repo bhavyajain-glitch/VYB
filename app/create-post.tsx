@@ -1,30 +1,32 @@
-import { View, Text, TextInput, TouchableOpacity, Image, StyleSheet, Dimensions, Alert, ActivityIndicator, Platform } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet, Dimensions, Alert, ActivityIndicator, Platform } from 'react-native';
+import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Camera, X, Check, FileText } from 'lucide-react-native';
+import { Camera, X, Plus, FileText } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { authAPI } from '../services/api';
+import { pickImageWebCustom, processWebImage } from '../utils/imagePickerWeb';
 
 const LIME = '#D4FF00';
 const { width } = Dimensions.get('window');
-
-
-
-import { pickImageWebCustom, processWebImage } from '../utils/imagePickerWeb';
+const MAX_IMAGES = 10;
 
 export default function CreatePostScreen() {
   const router = useRouter();
-  const [image, setImage] = useState<string | null>(null);
+  const [images, setImages] = useState<string[]>([]);
   const [caption, setCaption] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
 
-  const pickImage = async () => {
+  const pickImages = async () => {
     if (Platform.OS === 'web') {
       try {
         const uri = await pickImageWebCustom();
         if (uri) {
           const processed = await processWebImage(uri);
-          setImage(processed);
+          if (images.length < MAX_IMAGES) {
+            setImages(prev => [...prev, processed]);
+          }
         }
       } catch (e) {
         console.error("Web custom picker failed", e);
@@ -33,21 +35,23 @@ export default function CreatePostScreen() {
       return;
     }
 
-    // Native Logic
+    // Native: Multi-select
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [4, 5],
-      quality: 0.5,
+      allowsMultipleSelection: true,
+      selectionLimit: MAX_IMAGES - images.length,
+      quality: 0.7,
       base64: true,
     });
 
-    if (!result.canceled) {
-      if (result.assets[0].base64) {
-        setImage(`data:image/jpeg;base64,${result.assets[0].base64}`);
-      } else {
-        setImage(result.assets[0].uri);
-      }
+    if (!result.canceled && result.assets) {
+      const newImages = result.assets.map(asset => {
+        if (asset.base64) {
+          return `data:image/jpeg;base64,${asset.base64}`;
+        }
+        return asset.uri;
+      });
+      setImages(prev => [...prev, ...newImages].slice(0, MAX_IMAGES));
     }
   };
 
@@ -56,38 +60,44 @@ export default function CreatePostScreen() {
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: Platform.OS !== 'web',
       aspect: [4, 5],
-      quality: 0.5,
+      quality: 0.7,
       base64: true,
     });
 
-    if (!result.canceled) {
+    if (!result.canceled && result.assets[0]) {
+      let imageData: string;
       if (Platform.OS === 'web') {
         try {
-          const processed = await processWebImage(result.assets[0].uri);
-          setImage(processed as string);
+          imageData = await processWebImage(result.assets[0].uri);
         } catch (e) {
-          setImage(result.assets[0].uri);
+          imageData = result.assets[0].uri;
         }
       } else {
-        if (result.assets[0].base64) {
-          setImage(`data:image/jpeg;base64,${result.assets[0].base64}`);
-        } else {
-          setImage(result.assets[0].uri);
-        }
+        imageData = result.assets[0].base64
+          ? `data:image/jpeg;base64,${result.assets[0].base64}`
+          : result.assets[0].uri;
+      }
+
+      if (images.length < MAX_IMAGES) {
+        setImages(prev => [...prev, imageData]);
       }
     }
   };
 
+  const removeImage = (index: number) => {
+    setImages(prev => prev.filter((_, i) => i !== index));
+  };
+
   const requestSource = () => {
     if (Platform.OS === 'web') {
-      pickImage();
+      pickImages();
     } else {
       Alert.alert(
-        "Select Image",
-        "Choose a source",
+        "Add Photos",
+        `Select up to ${MAX_IMAGES - images.length} more photos`,
         [
           { text: "Camera", onPress: takePhoto },
-          { text: "Gallery", onPress: pickImage },
+          { text: "Gallery", onPress: pickImages },
           { text: "Cancel", style: "cancel" }
         ]
       );
@@ -95,22 +105,33 @@ export default function CreatePostScreen() {
   };
 
   const handlePost = async () => {
-    if (!image) return;
+    if (images.length === 0) return;
 
     setIsLoading(true);
-    try {
-      let imageUrl = image;
+    setUploadProgress(0);
 
-      // Upload to Cloudinary if it's a base64/data URL
-      if (image.startsWith('data:')) {
-        console.log('📤 Uploading image to Cloudinary...');
-        const uploadRes = await authAPI.uploadImage(image, 'posts');
-        imageUrl = uploadRes.data.url;
-        console.log('✅ Image uploaded:', imageUrl);
+    try {
+      // Upload all images to Cloudinary
+      const uploadedUrls: string[] = [];
+
+      for (let i = 0; i < images.length; i++) {
+        const img = images[i];
+        let imageUrl = img;
+
+        if (img.startsWith('data:')) {
+          console.log(`📤 Uploading image ${i + 1}/${images.length}...`);
+          const uploadRes = await authAPI.uploadImage(img, 'posts');
+          imageUrl = uploadRes.data.url;
+        }
+
+        uploadedUrls.push(imageUrl);
+        setUploadProgress(Math.round(((i + 1) / images.length) * 100));
       }
 
+      console.log('✅ All images uploaded, creating post...');
+
       await authAPI.createPost({
-        image: imageUrl,
+        images: uploadedUrls,
         caption
       });
 
@@ -121,6 +142,7 @@ export default function CreatePostScreen() {
       Alert.alert('Error', error.message || 'Failed to share post.');
     } finally {
       setIsLoading(false);
+      setUploadProgress(0);
     }
   };
 
@@ -142,33 +164,70 @@ export default function CreatePostScreen() {
         <Text style={styles.headerTitle}>New Post</Text>
         <TouchableOpacity
           onPress={handlePost}
-          disabled={!image || isLoading}
-          style={[styles.postButton, (!image || isLoading) && styles.disabledButton]}
+          disabled={images.length === 0 || isLoading}
+          style={[styles.postButton, (images.length === 0 || isLoading) && styles.disabledButton]}
         >
-          {isLoading ? <ActivityIndicator color="black" size="small" /> : <Text style={styles.postButtonText}>Share</Text>}
+          {isLoading ? (
+            <Text style={styles.postButtonText}>{uploadProgress}%</Text>
+          ) : (
+            <Text style={styles.postButtonText}>Share</Text>
+          )}
         </TouchableOpacity>
       </View>
 
-      <View style={styles.content}>
-        {/* Image Picker */}
-        <TouchableOpacity onPress={requestSource} style={styles.imageContainer} activeOpacity={0.9}>
-          {image ? (
-            image.startsWith('data:image/heic') || image.startsWith('data:image/heif') ? (
-              <View style={[styles.previewImage, { alignItems: 'center', justifyContent: 'center', backgroundColor: '#F3F4F6' }]}>
-                <FileText size={48} color="#6B7280" />
-                <Text style={{ marginTop: 12, color: '#6B7280', fontWeight: '500' }}>HEIC Preview Unavailable</Text>
-                <Text style={{ color: '#9CA3AF', fontSize: 12 }}>Image will appear after upload</Text>
+      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        {/* Image Gallery */}
+        {images.length > 0 ? (
+          <View>
+            {/* Main Preview - First Image */}
+            <View style={styles.mainImageContainer}>
+              <Image
+                source={{ uri: images[0] }}
+                style={styles.mainImage}
+                contentFit="cover"
+              />
+              <View style={styles.imageCounter}>
+                <Text style={styles.imageCounterText}>{images.length}/{MAX_IMAGES}</Text>
               </View>
-            ) : (
-              <Image source={{ uri: image }} style={styles.previewImage} resizeMode="cover" />
-            )
-          ) : (
-            <View style={styles.placeholder}>
-              <Camera size={48} color="#9CA3AF" />
-              <Text style={styles.placeholderText}>Tap to select photo</Text>
             </View>
-          )}
-        </TouchableOpacity>
+
+            {/* Thumbnail Strip */}
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.thumbnailContainer}
+            >
+              {images.map((img, index) => (
+                <View key={index} style={styles.thumbnailWrapper}>
+                  <Image source={{ uri: img }} style={styles.thumbnail} contentFit="cover" />
+                  <TouchableOpacity
+                    style={styles.removeButton}
+                    onPress={() => removeImage(index)}
+                  >
+                    <X size={14} color="white" />
+                  </TouchableOpacity>
+                  {index === 0 && (
+                    <View style={styles.coverBadge}>
+                      <Text style={styles.coverBadgeText}>Cover</Text>
+                    </View>
+                  )}
+                </View>
+              ))}
+
+              {images.length < MAX_IMAGES && (
+                <TouchableOpacity style={styles.addMoreButton} onPress={requestSource}>
+                  <Plus size={24} color="#6B7280" />
+                </TouchableOpacity>
+              )}
+            </ScrollView>
+          </View>
+        ) : (
+          <TouchableOpacity onPress={requestSource} style={styles.emptyState} activeOpacity={0.9}>
+            <Camera size={48} color="#9CA3AF" />
+            <Text style={styles.emptyStateText}>Tap to select photos</Text>
+            <Text style={styles.emptyStateSubtext}>Up to {MAX_IMAGES} photos per post</Text>
+          </TouchableOpacity>
+        )}
 
         {/* Caption Input */}
         <View style={styles.captionContainer}>
@@ -181,7 +240,7 @@ export default function CreatePostScreen() {
             style={styles.captionInput}
           />
         </View>
-      </View>
+      </ScrollView>
     </View>
   );
 }
@@ -205,11 +264,73 @@ const styles = StyleSheet.create({
   postButtonText: { fontWeight: 'bold', fontSize: 14 },
 
   content: { flex: 1, maxWidth: 600, alignSelf: 'center', width: '100%' },
-  imageContainer: { width: '100%', aspectRatio: 1, backgroundColor: '#F9FAFB', alignItems: 'center', justifyContent: 'center' },
-  previewImage: { width: '100%', height: '100%' },
-  placeholder: { alignItems: 'center', gap: 12 },
-  placeholderText: { color: '#9CA3AF', fontSize: 16, fontWeight: '500' },
 
-  captionContainer: { padding: 20, flex: 1 },
+  // Main image preview
+  mainImageContainer: { width: '100%', aspectRatio: 1, backgroundColor: '#F9FAFB', position: 'relative' },
+  mainImage: { width: '100%', height: '100%' },
+  imageCounter: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  imageCounterText: { color: 'white', fontSize: 12, fontWeight: '600' },
+
+  // Thumbnail strip
+  thumbnailContainer: { padding: 12, gap: 8 },
+  thumbnailWrapper: { width: 70, height: 70, position: 'relative' },
+  thumbnail: { width: '100%', height: '100%', borderRadius: 8 },
+  removeButton: {
+    position: 'absolute',
+    top: -6,
+    right: -6,
+    backgroundColor: '#EF4444',
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: 'white',
+  },
+  coverBadge: {
+    position: 'absolute',
+    bottom: 4,
+    left: 4,
+    backgroundColor: LIME,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  coverBadgeText: { fontSize: 9, fontWeight: 'bold', color: 'black' },
+  addMoreButton: {
+    width: 70,
+    height: 70,
+    borderRadius: 8,
+    borderWidth: 2,
+    borderStyle: 'dashed',
+    borderColor: '#E5E7EB',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F9FAFB',
+  },
+
+  // Empty state
+  emptyState: {
+    width: '100%',
+    aspectRatio: 1,
+    backgroundColor: '#F9FAFB',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+  },
+  emptyStateText: { color: '#6B7280', fontSize: 16, fontWeight: '500' },
+  emptyStateSubtext: { color: '#9CA3AF', fontSize: 14 },
+
+  // Caption
+  captionContainer: { padding: 20 },
   captionInput: { fontSize: 16, color: 'black', minHeight: 100, textAlignVertical: 'top' },
 });

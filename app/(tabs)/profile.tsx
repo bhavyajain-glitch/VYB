@@ -362,7 +362,20 @@ export default function ProfileScreen() {
               <TouchableOpacity style={[styles.mainActionButton, { flex: 2, backgroundColor: 'black' }]} onPress={() => router.push('/edit-profile')}>
                 <Text style={[styles.mainActionButtonText, { color: 'white' }]}>Edit Profile</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.mainActionButton, { flex: 1 }]}>
+              <TouchableOpacity
+                style={[styles.mainActionButton, { flex: 1 }]}
+                onPress={async () => {
+                  try {
+                    const { Share } = require('react-native');
+                    await Share.share({
+                      message: `Check out ${user?.fullName || user?.username}'s profile on Vyb!`,
+                      url: `https://vyb.app/user/${user?._id}`,
+                    });
+                  } catch (error) {
+                    console.error('Share error:', error);
+                  }
+                }}
+              >
                 <Text style={styles.mainActionButtonText}>Share</Text>
               </TouchableOpacity>
             </View>

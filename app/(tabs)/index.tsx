@@ -1,6 +1,7 @@
-import { View, Text, ScrollView, Image, TouchableOpacity, FlatList, StyleSheet, Dimensions, Platform, RefreshControl, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, FlatList, StyleSheet, Dimensions, Platform, RefreshControl, ActivityIndicator, Alert } from 'react-native';
+import { Image } from 'expo-image';
 import { LayoutGrid, Repeat, Heart, MessageCircle, Bookmark, MoreHorizontal, Plus, Send } from 'lucide-react-native';
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import Animated, { FadeInDown, FadeIn, useAnimatedStyle, useSharedValue, withSpring, withSequence, withDelay, withTiming, runOnJS, interpolate, Extrapolation, Easing } from 'react-native-reanimated';
 import { TapGestureHandler, State } from 'react-native-gesture-handler';
 import { useRouter, useFocusEffect, Stack } from 'expo-router';
@@ -348,6 +349,89 @@ export default function FeedScreen() {
     setPostViewerVisible(true);
   };
 
+  // Memoized callbacks for FlatList performance
+  const openCommentsCallback = useCallback((postId: string) => {
+    setSelectedPostId(postId);
+    setCommentModalVisible(true);
+  }, []);
+
+  const openOptionsCallback = useCallback((post: any) => {
+    setSelectedPostOptions(post);
+    setOptionsModalVisible(true);
+  }, []);
+
+  // Memoized render function for FlatList
+  const renderPostItem = useCallback(({ item }: { item: any }) => (
+    <PostItem
+      item={item}
+      onComment={openCommentsCallback}
+      onOptions={openOptionsCallback}
+      currentUserId={currentUserId}
+    />
+  ), [currentUserId, openCommentsCallback, openOptionsCallback]);
+
+  const keyExtractor = useCallback((item: any) => item._id, []);
+
+  // Stories component for ListHeader
+  const StoriesHeader = useMemo(() => (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={styles.storiesContainer}
+      style={styles.storiesScroll}
+    >
+      <StoryItem
+        item={{ isAddStory: true }}
+        index={0}
+        onAddStory={handleAddStory}
+        currentUserAvatar={currentUserAvatar}
+        onPress={() => { }}
+      />
+      {storyGroups.map((group: any, index: number) => (
+        <StoryItem
+          key={group.user._id}
+          item={group}
+          index={index + 1}
+          onPress={() => openStoryViewer(index)}
+          onAddStory={handleAddStory}
+          currentUserAvatar={currentUserAvatar}
+        />
+      ))}
+      {uploadingStory && (
+        <View style={styles.storyWrapper}>
+          <View style={styles.addStoryCircle}><ActivityIndicator color="#8B5CF6" /></View>
+          <Text style={styles.storyName}>Uploading...</Text>
+        </View>
+      )}
+    </ScrollView>
+  ), [storyGroups, currentUserAvatar, uploadingStory, handleAddStory]);
+
+  // Footer component for FlatList
+  const ListFooter = useMemo(() => (
+    <>
+      {loadingMore && (
+        <View style={{ padding: 20, alignItems: 'center' }}>
+          <ActivityIndicator size="small" color="#8B5CF6" />
+          <Text style={{ color: '#9CA3AF', marginTop: 8, fontSize: 12 }}>Loading more posts...</Text>
+        </View>
+      )}
+      {!hasMore && posts.length > 0 && (
+        <View style={{ padding: 20, alignItems: 'center' }}>
+          <Text style={{ color: '#9CA3AF', fontSize: 12 }}>✨ You're all caught up!</Text>
+        </View>
+      )}
+    </>
+  ), [loadingMore, hasMore, posts.length]);
+
+  // Empty component
+  const ListEmpty = useMemo(() => (
+    !refreshing ? (
+      <View style={{ padding: 20, alignItems: 'center' }}>
+        <Text style={{ color: '#9CA3AF' }}>No posts yet. Be the first to post!</Text>
+      </View>
+    ) : null
+  ), [refreshing]);
+
   return (
     <View style={styles.container}>
       <Stack.Screen options={{ headerShown: false }} />
@@ -372,125 +456,103 @@ export default function FeedScreen() {
 
       <View style={styles.mainLayout}>
         <View style={styles.feedColumn}>
-          <ScrollView
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={styles.scrollContent}
-            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-            onScroll={handleScroll}
-            scrollEventThrottle={400}
-          >
+          {isGridView ? (
+            /* Grid View - Keep ScrollView for masonry layout */
             <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.storiesContainer}
-              style={styles.storiesScroll}
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.scrollContent}
+              refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+              onScroll={handleScroll}
+              scrollEventThrottle={400}
             >
-              <StoryItem
-                item={{ isAddStory: true }}
-                index={0}
-                onAddStory={handleAddStory}
-                currentUserAvatar={currentUserAvatar}
-                onPress={() => { }}
-              />
-              {storyGroups.map((group: any, index: number) => (
-                <StoryItem
-                  key={group.user._id}
-                  item={group}
-                  index={index + 1}
-                  onPress={() => openStoryViewer(index)}
-                  onAddStory={handleAddStory}
-                  currentUserAvatar={currentUserAvatar}
-                />
-              ))}
-              {uploadingStory && (
-                <View style={styles.storyWrapper}>
-                  <View style={styles.addStoryCircle}><ActivityIndicator color="#8B5CF6" /></View>
-                  <Text style={styles.storyName}>Uploading...</Text>
-                </View>
-              )}
+              {StoriesHeader}
+              <View style={styles.postsList}>
+                {posts.length === 0 && !refreshing ? (
+                  <View style={{ padding: 20, alignItems: 'center' }}>
+                    <Text style={{ color: '#9CA3AF' }}>No posts yet. Be the first to post!</Text>
+                  </View>
+                ) : (
+                  <View style={styles.masonryContainer}>
+                    <View style={styles.masonryColumn}>
+                      {posts.filter((_, i) => i % 2 === 0).map((post, index) => (
+                        <Animated.View key={post._id} entering={FadeIn.delay(index * 100)} style={styles.masonryItem}>
+                          <TouchableOpacity onPress={() => openPostFromGrid(posts.indexOf(post))}>
+                            <Image
+                              source={{ uri: getPostImageUrl(post.image) }}
+                              style={[styles.masonryImage, { aspectRatio: index % 3 === 0 ? 0.7 : 1 }]}
+                              contentFit="cover"
+                              transition={200}
+                            />
+                            <View style={styles.gridOverlay}>
+                              <View style={styles.gridUser}>
+                                <Image source={getAvatarSource(post.user?.profileImage)} style={styles.gridAvatar} />
+                                <Text style={styles.gridUsername} numberOfLines={1}>{post.user?.username}</Text>
+                              </View>
+                              <View style={styles.gridLikes}>
+                                <Heart size={10} color="white" fill="white" />
+                                <Text style={styles.gridLikesText}>{post.likes?.length || 0}</Text>
+                              </View>
+                            </View>
+                          </TouchableOpacity>
+                        </Animated.View>
+                      ))}
+                    </View>
+                    <View style={styles.masonryColumn}>
+                      {posts.filter((_, i) => i % 2 !== 0).map((post, index) => (
+                        <Animated.View key={post._id} entering={FadeIn.delay(index * 150)} style={styles.masonryItem}>
+                          <TouchableOpacity onPress={() => openPostFromGrid(posts.indexOf(post))}>
+                            <Image
+                              source={{ uri: getPostImageUrl(post.image) }}
+                              style={[styles.masonryImage, { aspectRatio: index % 2 === 0 ? 1.2 : 0.8 }]}
+                              contentFit="cover"
+                              transition={200}
+                            />
+                            <View style={styles.gridOverlay}>
+                              <View style={styles.gridUser}>
+                                <Image source={getAvatarSource(post.user?.profileImage)} style={styles.gridAvatar} />
+                                <Text style={styles.gridUsername} numberOfLines={1}>{post.user?.username}</Text>
+                              </View>
+                              <View style={styles.gridLikes}>
+                                <Heart size={10} color="white" fill="white" />
+                                <Text style={styles.gridLikesText}>{post.likes?.length || 0}</Text>
+                              </View>
+                            </View>
+                          </TouchableOpacity>
+                        </Animated.View>
+                      ))}
+                    </View>
+                  </View>
+                )}
+                {ListFooter}
+              </View>
             </ScrollView>
-
-            <View style={styles.postsList}>
-              {posts.length === 0 && !refreshing ? (
-                <View style={{ padding: 20, alignItems: 'center' }}>
-                  <Text style={{ color: '#9CA3AF' }}>No posts yet. Be the first to post!</Text>
-                </View>
-              ) : isGridView ? (
-                <View style={styles.masonryContainer}>
-                  <View style={styles.masonryColumn}>
-                    {posts.filter((_, i) => i % 2 === 0).map((post, index) => (
-                      <Animated.View key={post._id} entering={FadeIn.delay(index * 100)} style={styles.masonryItem}>
-                        <TouchableOpacity onPress={() => openPostFromGrid(posts.indexOf(post))}>
-                          <Image
-                            source={{ uri: getPostImageUrl(post.image) }}
-                            style={[styles.masonryImage, { aspectRatio: index % 3 === 0 ? 0.7 : 1 }]}
-                          />
-                          <View style={styles.gridOverlay}>
-                            <View style={styles.gridUser}>
-                              <Image source={getAvatarSource(post.user?.profileImage)} style={styles.gridAvatar} />
-                              <Text style={styles.gridUsername} numberOfLines={1}>{post.user?.username}</Text>
-                            </View>
-                            <View style={styles.gridLikes}>
-                              <Heart size={10} color="white" fill="white" />
-                              <Text style={styles.gridLikesText}>{post.likes?.length || 0}</Text>
-                            </View>
-                          </View>
-                        </TouchableOpacity>
-                      </Animated.View>
-                    ))}
-                  </View>
-                  <View style={styles.masonryColumn}>
-                    {posts.filter((_, i) => i % 2 !== 0).map((post, index) => (
-                      <Animated.View key={post._id} entering={FadeIn.delay(index * 150)} style={styles.masonryItem}>
-                        <TouchableOpacity onPress={() => openPostFromGrid(posts.indexOf(post))}>
-                          <Image
-                            source={{ uri: getPostImageUrl(post.image) }}
-                            style={[styles.masonryImage, { aspectRatio: index % 2 === 0 ? 1.2 : 0.8 }]}
-                          />
-                          <View style={styles.gridOverlay}>
-                            <View style={styles.gridUser}>
-                              <Image source={getAvatarSource(post.user?.profileImage)} style={styles.gridAvatar} />
-                              <Text style={styles.gridUsername} numberOfLines={1}>{post.user?.username}</Text>
-                            </View>
-                            <View style={styles.gridLikes}>
-                              <Heart size={10} color="white" fill="white" />
-                              <Text style={styles.gridLikesText}>{post.likes?.length || 0}</Text>
-                            </View>
-                          </View>
-                        </TouchableOpacity>
-                      </Animated.View>
-                    ))}
-                  </View>
-                </View>
-              ) : (
-                posts.map((post: any) => (
-                  <PostItem
-                    key={post._id}
-                    item={post}
-                    onComment={openComments}
-                    onOptions={openOptions}
-                    currentUserId={currentUserId}
-                  />
-                ))
-              )}
-
-              {loadingMore && (
-                <View style={{ padding: 20, alignItems: 'center' }}>
-                  <ActivityIndicator size="small" color="#8B5CF6" />
-                  <Text style={{ color: '#9CA3AF', marginTop: 8, fontSize: 12 }}>Loading more posts...</Text>
-                </View>
-              )}
-
-              {!hasMore && posts.length > 0 && (
-                <View style={{ padding: 20, alignItems: 'center' }}>
-                  <Text style={{ color: '#9CA3AF', fontSize: 12 }}>✨ You're all caught up!</Text>
-                </View>
-              )}
-            </View>
-          </ScrollView>
+          ) : (
+            /* List View - Optimized FlatList */
+            <FlatList
+              data={posts}
+              renderItem={renderPostItem}
+              keyExtractor={keyExtractor}
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.scrollContent}
+              refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+              onEndReached={loadMorePosts}
+              onEndReachedThreshold={0.5}
+              ListHeaderComponent={StoriesHeader}
+              ListFooterComponent={ListFooter}
+              ListEmptyComponent={ListEmpty}
+              // Performance optimizations
+              initialNumToRender={5}
+              maxToRenderPerBatch={5}
+              windowSize={7}
+              removeClippedSubviews={Platform.OS !== 'web'}
+              updateCellsBatchingPeriod={50}
+              getItemLayout={undefined} // Variable height items
+            />
+          )}
         </View>
         {isDesktop && <RightSidebar />}
       </View>
+
 
       {!isDesktop && (
         <TouchableOpacity style={styles.fab} onPress={() => router.push('/create-post')} activeOpacity={0.9}>

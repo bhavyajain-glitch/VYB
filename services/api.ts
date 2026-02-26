@@ -147,6 +147,8 @@ export const authAPI = {
   getUserPosts: (userId: string) => request(`/posts/user/${userId}`, 'GET'),
   addComment: (postId: string, text: string) => request(`/posts/${postId}/comment`, 'POST', { text }),
   toggleLike: (postId: string) => request(`/posts/${postId}/like`, 'PUT'),
+  toggleBookmark: (postId: string) => request(`/posts/${postId}/bookmark`, 'PUT'),
+  getSavedPosts: () => request('/posts/saved', 'GET'),
   getPost: (id: string) => request(`/posts/${id}`, 'GET'), // Need this too
   deletePost: (id: string) => request(`/posts/${id}`, 'DELETE'),
 

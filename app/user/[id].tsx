@@ -5,6 +5,7 @@ import { ArrowLeft, MessageCircle, Settings, Grid, Bookmark, Heart, Play, Layers
 import { LinearGradient } from 'expo-linear-gradient';
 import { authAPI } from '../../services/api';
 import { getAvatarSource, getPostImageUrl, getCoverSource } from '../../utils/imageUtils';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const LIME = '#D4FF00';
 
@@ -19,7 +20,20 @@ export default function PublicProfileScreen() {
   const [activeTab, setActiveTab] = useState<'posts' | 'gallery'>('posts');
 
   useEffect(() => {
-    if (id) fetchUser();
+    const checkAndFetch = async () => {
+      // Check if viewing own profile - redirect to profile tab
+      const userInfo = await AsyncStorage.getItem('userInfo');
+      if (userInfo) {
+        const currentUser = JSON.parse(userInfo);
+        const currentUserId = currentUser._id || currentUser.id;
+        if (id === currentUserId) {
+          router.replace('/(tabs)/profile');
+          return;
+        }
+      }
+      if (id) fetchUser();
+    };
+    checkAndFetch();
   }, [id]);
 
   const fetchUser = async () => {
@@ -129,15 +143,12 @@ export default function PublicProfileScreen() {
           {/* Action Buttons */}
           <View style={styles.mainActionsRow}>
             <TouchableOpacity
-              style={[styles.mainActionButton, isFollowing && styles.followingButton]}
+              style={[styles.mainActionButton, isFollowing && styles.followingButton, { flex: 1 }]}
               onPress={handleFollow}
             >
               <Text style={[styles.mainActionButtonText, isFollowing && styles.followingText]}>
                 {isFollowing ? 'Following' : 'Follow'}
               </Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.mainActionButton}>
-              <Text style={styles.mainActionButtonText}>Message</Text>
             </TouchableOpacity>
           </View>
 
@@ -166,7 +177,7 @@ export default function PublicProfileScreen() {
                   <View style={styles.masonryColumn}>
                     {posts.filter((_, i) => i % 2 === 0).map((post: any, index) => (
                       <View key={post._id} style={styles.masonryItem}>
-                        <TouchableOpacity>
+                        <TouchableOpacity onPress={() => router.push(`/post/${post._id}`)}>
                           <Image
                             source={{ uri: getPostImageUrl(post.image) }}
                             style={[styles.masonryImage, { aspectRatio: index % 3 === 0 ? 0.7 : 1 }]}
@@ -179,7 +190,7 @@ export default function PublicProfileScreen() {
                   <View style={styles.masonryColumn}>
                     {posts.filter((_, i) => i % 2 !== 0).map((post: any, index) => (
                       <View key={post._id} style={styles.masonryItem}>
-                        <TouchableOpacity>
+                        <TouchableOpacity onPress={() => router.push(`/post/${post._id}`)}>
                           <Image
                             source={{ uri: getPostImageUrl(post.image) }}
                             style={[styles.masonryImage, { aspectRatio: index % 2 === 0 ? 1.2 : 0.8 }]}

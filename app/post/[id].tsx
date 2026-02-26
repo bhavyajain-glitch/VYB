@@ -85,8 +85,19 @@ export default function PostDetailScreen() {
           </View>
           <Image source={{ uri: post.image }} style={styles.postImage} resizeMode="cover" />
           <View style={styles.actions}>
-            <Heart size={24} color="black" />
-            <MessageCircle size={24} color="black" />
+            <TouchableOpacity onPress={async () => {
+              try {
+                const res = await authAPI.toggleLike(id as string);
+                setPost((prev: any) => ({ ...prev, likes: res.data }));
+              } catch (error) {
+                console.error('Like error:', error);
+              }
+            }}>
+              <Heart size={24} color={post.likes?.includes(post.user?._id) ? '#EF4444' : 'black'} fill={post.likes?.includes(post.user?._id) ? '#EF4444' : 'transparent'} />
+            </TouchableOpacity>
+            <TouchableOpacity>
+              <MessageCircle size={24} color="black" />
+            </TouchableOpacity>
           </View>
           <Text style={styles.likes}>{post.likes?.length || 0} likes</Text>
           <Text style={styles.caption}><Text style={styles.bold}>{post.user?.username}</Text> {post.caption}</Text>
