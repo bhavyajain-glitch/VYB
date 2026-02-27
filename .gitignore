@@ -6,8 +6,7 @@ node_modules/
 .env.*
 backend/.env
 
-# Backend (separate repo: vyb-code/Backend)
-backend/
+# Backend (included in monorepo)
 
 # Build outputs
 build/
