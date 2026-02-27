@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import api from '../api/axios';
-import { Search } from 'lucide-react';
+import { Search, Download, Filter } from 'lucide-react';
 
 interface Transaction {
     _id: string;
@@ -16,6 +16,8 @@ export default function Transactions() {
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
+    const [statusFilter, setStatusFilter] = useState('all');
+    const [typeFilter, setTypeFilter] = useState('all');
 
     const fetchTransactions = async () => {
         try {
@@ -32,11 +34,45 @@ export default function Transactions() {
         fetchTransactions();
     }, []);
 
-    const filteredTransactions = transactions.filter(t =>
-        t.user?.username?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        t.user?.fullName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        t.user?.email?.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    const filteredTransactions = transactions.filter(t => {
+        const matchesSearch =
+            t.user?.username?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            t.user?.fullName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            t.user?.email?.toLowerCase().includes(searchTerm.toLowerCase());
+
+        const matchesStatus = statusFilter === 'all' || t.status === statusFilter;
+        const matchesType = typeFilter === 'all' || t.type === typeFilter;
+
+        return matchesSearch && matchesStatus && matchesType;
+    });
+
+    const handleExportCSV = () => {
+        const headers = ['Date', 'User', 'Email', 'Amount (Coins)', 'Price (INR)', 'Status', 'Type'];
+        const rows = filteredTransactions.map(tx => [
+            new Date(tx.createdAt).toLocaleString(),
+            tx.user?.username || 'unknown',
+            tx.user?.email || 'N/A',
+            tx.amount,
+            tx.price,
+            tx.status,
+            tx.type || 'coins'
+        ]);
+
+        const csvContent = [
+            headers.join(','),
+            ...rows.map(r => r.join(','))
+        ].join('\n');
+
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        const url = URL.createObjectURL(blob);
+        link.setAttribute('href', url);
+        link.setAttribute('download', `vyb_transactions_${Date.now()}.csv`);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
 
     const totalRevenue = transactions
         .filter(t => t.status === 'completed')
@@ -49,15 +85,51 @@ export default function Transactions() {
                     <h2 className="text-2xl font-bold text-gray-800">Transaction History</h2>
                     <p className="text-sm text-gray-500">Total Revenue: <span className="font-bold text-green-600">₹{totalRevenue}</span></p>
                 </div>
-                <div className="relative w-full md:w-64">
-                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
-                    <input
-                        type="text"
-                        placeholder="Search user or email..."
-                        className="pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 w-full"
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                    />
+                <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
+                    <div className="relative">
+                        <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 font-black" size={14} />
+                        <select
+                            className="pl-8 pr-4 py-2 bg-white border border-gray-200 rounded-xl text-xs font-black uppercase tracking-widest focus:ring-2 focus:ring-blue-500 outline-none appearance-none"
+                            value={statusFilter}
+                            onChange={(e) => setStatusFilter(e.target.value)}
+                        >
+                            <option value="all">All Status</option>
+                            <option value="completed">Completed</option>
+                            <option value="failed">Failed</option>
+                            <option value="pending">Pending</option>
+                        </select>
+                    </div>
+
+                    <div className="relative">
+                        <select
+                            className="px-4 py-2 bg-white border border-gray-200 rounded-xl text-xs font-black uppercase tracking-widest focus:ring-2 focus:ring-blue-500 outline-none appearance-none"
+                            value={typeFilter}
+                            onChange={(e) => setTypeFilter(e.target.value)}
+                        >
+                            <option value="all">All Types</option>
+                            <option value="coins">Coins</option>
+                            <option value="subscription">Subscription</option>
+                            <option value="premium">Premium</option>
+                        </select>
+                    </div>
+
+                    <div className="relative flex-1 md:flex-none md:w-64">
+                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
+                        <input
+                            type="text"
+                            placeholder="Search user..."
+                            className="pl-10 pr-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 w-full text-sm font-medium"
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                        />
+                    </div>
+
+                    <button
+                        onClick={handleExportCSV}
+                        className="flex items-center gap-2 px-4 py-2 bg-gray-900 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-gray-800 transition-all shadow-lg shadow-gray-200"
+                    >
+                        <Download size={14} /> Export CSV
+                    </button>
                 </div>
             </div>
 

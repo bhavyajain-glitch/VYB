@@ -199,7 +199,7 @@ export default function ProfileScreen() {
         result = await processWebImage(uri);
       } else {
         const pickerRes = await ImagePicker.launchImageLibraryAsync({
-          mediaTypes: ImagePicker.MediaTypeOptions.Images,
+          mediaTypes: ['images'],
           allowsEditing: true,
           aspect: type === 'avatar' ? [1, 1] : [16, 9],
           quality: 0.7,

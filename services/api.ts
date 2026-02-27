@@ -15,7 +15,7 @@ const getLocalIp = () => {
 };
 
 // API URLs
-const LOCAL_API_URL = `http://${getLocalIp()}:5000/api`;
+const LOCAL_API_URL = `http://${getLocalIp()}:5001/api`;
 
 const PRODUCTION_API_URL = 'https://campusconnect-api-nx9k.onrender.com/api';
 
@@ -46,9 +46,9 @@ const request = async (endpoint: string, method: string, body?: any, retryCount 
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => {
-      console.warn(`[API] Request timed out after 60s: ${method} ${endpoint}`);
+      console.warn(`[API] Request timed out after 5 mins: ${method} ${endpoint}`);
       controller.abort();
-    }, 60000); // 60 second timeout (increased for cold starts)
+    }, 300000); // 5 minute timeout for large media uploads
 
     const response = await fetch(`${API_URL}${endpoint}`, {
       method,
@@ -143,14 +143,23 @@ export const authAPI = {
 
   // Posts
   getPosts: (page: number = 1, limit: number = 10) => request(`/posts?page=${page}&limit=${limit}`, 'GET'),
+  getExplorePosts: (page: number = 1, limit: number = 20) => request(`/posts/explore?page=${page}&limit=${limit}`, 'GET'),
+  getReels: (page: number = 1, limit: number = 10) => request(`/posts/reels?page=${page}&limit=${limit}`, 'GET'),
+  getPostsByHashtag: (tag: string, page: number = 1) => request(`/posts/hashtag/${encodeURIComponent(tag)}?page=${page}`, 'GET'),
   createPost: (data: any) => request('/posts', 'POST', data),
   getUserPosts: (userId: string) => request(`/posts/user/${userId}`, 'GET'),
-  addComment: (postId: string, text: string) => request(`/posts/${postId}/comment`, 'POST', { text }),
+  addComment: (postId: string, text: string, parentId?: string) => request(`/posts/${postId}/comment`, 'POST', { text, parentId }),
   toggleLike: (postId: string) => request(`/posts/${postId}/like`, 'PUT'),
   toggleBookmark: (postId: string) => request(`/posts/${postId}/bookmark`, 'PUT'),
   getSavedPosts: () => request('/posts/saved', 'GET'),
-  getPost: (id: string) => request(`/posts/${id}`, 'GET'), // Need this too
+  getPost: (id: string) => request(`/posts/${id}`, 'GET'),
   deletePost: (id: string) => request(`/posts/${id}`, 'DELETE'),
+  getPostAnalytics: (id: string) => request(`/posts/${id}/analytics`, 'GET'),
+  trackWatch: (postId: string, watchTime: number, completionPercent: number) =>
+    request(`/posts/${postId}/watch`, 'POST', { watchTime, completionPercent }),
+  reportPost: (postId: string, reason: string, description?: string) =>
+    request(`/posts/${postId}/report`, 'POST', { reason, description }),
+
 
   // User Utils
   checkUsername: (username: string) => request('/users/check-username', 'POST', { username }),
@@ -180,13 +189,24 @@ export const authAPI = {
 
   // Upload (Cloudinary)
   uploadImage: (image: string, folder: string = 'campusconnect') => request('/upload', 'POST', { image, folder }),
+  uploadVideo: (video: string, folder: string = 'campusconnect/videos') => request('/upload/video', 'POST', { video, folder }),
+  getDownloadUrl: (publicId: string, resourceType: 'image' | 'video' = 'image') =>
+    request(`/upload/download/${encodeURIComponent(publicId)}?resourceType=${resourceType}`, 'GET'),
 
   // Stories
   getStories: () => request('/stories', 'GET'),
+
+  // Events
+  getEvents: (category?: string) => request(category && category !== 'All' ? `/events?category=${category}` : '/events', 'GET'),
   createStory: (image: string) => request('/stories', 'POST', { image }),
   viewStory: (id: string) => request(`/stories/${id}/view`, 'POST'),
   archiveStory: (id: string) => request(`/stories/${id}`, 'DELETE'),
   getArchivedStories: () => request('/stories/archive', 'GET'),
+
+  // Trending
+  getTrendingHashtags: () => request('/trending/hashtags', 'GET'),
+  getTrendingPosts: (limit: number = 20, hours: number = 24) =>
+    request(`/trending/posts?limit=${limit}&hours=${hours}`, 'GET'),
 };
 
 export default { request };

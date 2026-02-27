@@ -1,5 +1,5 @@
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { LayoutDashboard, FileWarning, LogOut, Users, Image as ImageIcon, CircleDashed, CreditCard, Bell, MessageCircle, Settings } from 'lucide-react';
+import { LayoutDashboard, FileWarning, LogOut, Users, Image as ImageIcon, CircleDashed, CreditCard, Bell, MessageCircle, Settings, Zap, Megaphone } from 'lucide-react';
 
 export default function Layout() {
   const navigate = useNavigate();
@@ -21,6 +21,8 @@ export default function Layout() {
     { icon: MessageCircle, label: 'Chats', path: '/chats' },
     { icon: Bell, label: 'Notifications', path: '/notifications' },
     { icon: Settings, label: 'Settings', path: '/settings' },
+    { icon: Zap, label: 'Power Center', path: '/power' },
+    { icon: Megaphone, label: 'Broadcaster', path: '/broadcaster' },
   ];
 
   return (
@@ -28,7 +30,7 @@ export default function Layout() {
       {/* Sidebar */}
       <div className="w-64 bg-white shadow-md flex flex-col">
         <div className="p-6 border-b">
-          <h1 className="text-2xl font-bold text-blue-600">CC Admin</h1>
+          <h1 className="text-2xl font-black text-blue-600 tracking-tighter uppercase">Vyb Admin</h1>
         </div>
 
         <nav className="flex-1 p-4 space-y-2">

@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Layout from './components/Layout';
 import Login from './pages/Login';
+import Broadcaster from './pages/Broadcaster';
 import Dashboard from './pages/Dashboard';
 import Users from './pages/Users';
 import UserDetail from './pages/UserDetail';
@@ -11,6 +12,7 @@ import Transactions from './pages/Transactions';
 import Notifications from './pages/Notifications';
 import Chats from './pages/Chats';
 import Settings from './pages/Settings';
+import PowerCenter from './pages/PowerCenter';
 
 // Protected Route Component
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
@@ -34,6 +36,7 @@ function App() {
         }>
           <Route index element={<Navigate to="/dashboard" replace />} />
           <Route path="dashboard" element={<Dashboard />} />
+          <Route path="broadcaster" element={<Broadcaster />} />
           <Route path="users" element={<Users />} />
           <Route path="users/:id" element={<UserDetail />} />
           <Route path="posts" element={<Posts />} />
@@ -43,6 +46,7 @@ function App() {
           <Route path="chats" element={<Chats />} />
           <Route path="notifications" element={<Notifications />} />
           <Route path="settings" element={<Settings />} />
+          <Route path="power" element={<PowerCenter />} />
         </Route>
       </Routes>
     </BrowserRouter>

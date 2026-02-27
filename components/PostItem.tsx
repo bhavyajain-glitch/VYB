@@ -1,15 +1,39 @@
-import { View, Text, TouchableOpacity, StyleSheet, FlatList, Dimensions } from 'react-native';
-import { Image } from 'expo-image';
-import { Heart, MessageCircle, MoreHorizontal, MapPin, Send, Bookmark } from 'lucide-react-native';
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import Animated, { FadeInDown, useAnimatedStyle, useSharedValue, withTiming, interpolate, Extrapolation, Easing } from 'react-native-reanimated';
-import { TapGestureHandler } from 'react-native-gesture-handler';
-import { useRouter } from 'expo-router';
-import { authAPI } from '../services/api';
-import { getAvatarSource, getPostImageUrl } from '../utils/imageUtils';
-import { LinearGradient } from 'expo-linear-gradient';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  FlatList,
+  Dimensions,
+} from "react-native";
+import { Image } from "expo-image";
+import {
+  Heart,
+  MessageCircle,
+  MoreHorizontal,
+  MapPin,
+  Send,
+  Bookmark,
+  BarChart2,
+} from "lucide-react-native";
+import React, { useState, useEffect, useRef, useCallback } from "react";
+import Animated, {
+  FadeInDown,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+  interpolate,
+  Extrapolation,
+  Easing,
+} from "react-native-reanimated";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
+import { useRouter } from "expo-router";
+import { authAPI } from "../services/api";
+import { getAvatarSource, getPostImageUrl } from "../utils/imageUtils";
+import { LinearGradient } from "expo-linear-gradient";
+import VideoPlayer from "./VideoPlayer";
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const IMAGE_WIDTH = Math.min(SCREEN_WIDTH - 24, 476); // Max width with 12px padding on each side
 
 function PostItemComponent({ item, onComment, onOptions, currentUserId }: any) {
@@ -18,44 +42,44 @@ function PostItemComponent({ item, onComment, onOptions, currentUserId }: any) {
   // Helper function to check if user liked the post (handles ObjectId vs string comparison)
   const checkIfLiked = (likes: any[], userId: string | null): boolean => {
     if (!likes || !userId) return false;
-    return likes.some(id => id?.toString() === userId?.toString());
+    return likes.some((id) => id?.toString() === userId?.toString());
   };
 
-  const [isLiked, setIsLiked] = useState<boolean>(checkIfLiked(item.likes, currentUserId));
+  const [isLiked, setIsLiked] = useState<boolean>(
+    checkIfLiked(item.likes, currentUserId),
+  );
   const [likesCount, setLikesCount] = useState(item.likes?.length || 0);
   const likeAnimation = useSharedValue(0);
-  const doubleTapRef = useRef(null);
 
   const [isFollowing, setIsFollowing] = useState(false);
   const [isBookmarked, setIsBookmarked] = useState(false);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
 
-  // Get images array (supports both new multi-image and legacy single image)
-  // Priority: images array > allImages virtual > single image field
-  const images: string[] = React.useMemo(() => {
-    // Debug logging
-    console.log('📸 PostItem data:', {
-      postId: item._id,
-      username: item.user?.username,
-      hasImages: !!item.images,
-      imagesLength: item.images?.length,
-      hasAllImages: !!item.allImages,
-      allImagesLength: item.allImages?.length,
-      hasImage: !!item.image,
-      image: item.image?.substring(0, 50),
-    });
+  // Unified media array (supports images and videos)
+  const mediaItems: any[] = React.useMemo(() => {
+    if (
+      item.allMedia &&
+      Array.isArray(item.allMedia) &&
+      item.allMedia.length > 0
+    ) {
+      return item.allMedia;
+    }
 
-    if (item.images && Array.isArray(item.images) && item.images.length > 0) {
-      return item.images;
+    // Fallback to legacy structure
+    const fallback: any[] = [];
+    if (item.images?.length > 0) {
+      item.images.forEach((url: string) =>
+        fallback.push({ type: "image", url }),
+      );
+    } else if (item.image) {
+      fallback.push({ type: "image", url: item.image });
     }
-    if (item.allImages && Array.isArray(item.allImages) && item.allImages.length > 0) {
-      return item.allImages;
+
+    if (item.videos?.length > 0) {
+      item.videos.forEach((v: any) => fallback.push({ ...v, type: "video" }));
     }
-    if (item.image) {
-      return [item.image];
-    }
-    return [];
-  }, [item.images, item.allImages, item.image]);
+    return fallback;
+  }, [item.allMedia, item.images, item.image, item.videos]);
 
   useEffect(() => {
     if (currentUserId) {
@@ -75,11 +99,11 @@ function PostItemComponent({ item, onComment, onOptions, currentUserId }: any) {
   const handleLike = () => {
     const newStatus = !isLiked;
     setIsLiked(newStatus);
-    setLikesCount((prev: number) => newStatus ? prev + 1 : prev - 1);
+    setLikesCount((prev: number) => (newStatus ? prev + 1 : prev - 1));
     // API Call
-    authAPI.toggleLike(item._id).catch(err => {
+    authAPI.toggleLike(item._id).catch((err) => {
       setIsLiked(!newStatus);
-      setLikesCount((prev: number) => !newStatus ? prev + 1 : prev - 1);
+      setLikesCount((prev: number) => (!newStatus ? prev + 1 : prev - 1));
     });
   };
 
@@ -91,37 +115,47 @@ function PostItemComponent({ item, onComment, onOptions, currentUserId }: any) {
     });
   };
 
-  const onDoubleTap = useCallback(() => {
-    likeAnimation.value = 0; // Reset
-    likeAnimation.value = withTiming(1, { duration: 1250, easing: Easing.linear });
+  const doubleTapGesture = Gesture.Tap()
+    .numberOfTaps(2)
+    .onEnd((_event, success) => {
+      if (success) {
+        likeAnimation.value = 0; // Reset
+        likeAnimation.value = withTiming(1, {
+          duration: 1250,
+          easing: Easing.linear,
+        });
 
-    // Toggle like on double tap - like if not liked, unlike if already liked
-    handleLike();
-  }, [isLiked, likeAnimation]);
+        // Toggle like on double tap - like if not liked, unlike if already liked
+        handleLike();
+      }
+    });
 
   const rStyle = useAnimatedStyle(() => {
     const scale = interpolate(
       likeAnimation.value,
       [0, 0.25, 0.6, 1],
       [0.3, 1.2, 1, 1],
-      Extrapolation.CLAMP
+      Extrapolation.CLAMP,
     );
 
     const opacity = interpolate(
       likeAnimation.value,
       [0, 0.25, 0.6, 1],
       [0, 1, 1, 0],
-      Extrapolation.CLAMP
+      Extrapolation.CLAMP,
     );
 
     return {
       transform: [{ scale }],
-      opacity
+      opacity,
     };
   });
 
   return (
-    <Animated.View entering={FadeInDown.delay(100).duration(500)} style={styles.postCard}>
+    <Animated.View
+      entering={FadeInDown.delay(100).duration(500)}
+      style={styles.postCard}
+    >
       {/* Header Info */}
       <View style={styles.postHeader}>
         <TouchableOpacity
@@ -129,82 +163,131 @@ function PostItemComponent({ item, onComment, onOptions, currentUserId }: any) {
           onPress={() => router.push(`/user/${item.user?._id}`)}
           activeOpacity={0.7}
         >
-          <Image source={getAvatarSource(item.user?.profileImage)} style={styles.userAvatar} />
+          <Image
+            source={getAvatarSource(item.user?.profileImage)}
+            style={styles.userAvatar}
+          />
           <View style={styles.userDetails}>
-            <Text style={styles.userName}>{item.user?.username || 'User'}</Text>
+            <Text style={styles.userName}>{item.user?.username || "User"}</Text>
             <View style={styles.locationContainer}>
               <MapPin size={10} color="#6B7280" />
-              <Text style={styles.locationText}>{item.user?.college || 'Campus'}</Text>
+              <Text style={styles.locationText}>
+                {item.user?.college || "Campus"}
+              </Text>
             </View>
           </View>
-          {item.user?.isVerified && <View style={styles.verifiedBadge}><Text style={styles.verifiedCheck}>✓</Text></View>}
+          {item.user?.isVerified && (
+            <View style={styles.verifiedBadge}>
+              <Text style={styles.verifiedCheck}>✓</Text>
+            </View>
+          )}
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.moreBtn} onPress={() => onOptions(item)}>
+        <TouchableOpacity
+          style={styles.moreBtn}
+          onPress={() => onOptions(item)}
+        >
           <MoreHorizontal size={20} color="#111827" />
         </TouchableOpacity>
       </View>
 
       {/* Main Image(s) - Carousel */}
-      <TapGestureHandler
-        waitFor={doubleTapRef}
-        onActivated={onDoubleTap}
-        numberOfTaps={2}
-      >
+      <GestureDetector gesture={doubleTapGesture}>
         <View style={styles.imageContainer}>
-          {images.length > 1 ? (
-            /* Multi-image carousel */
+          {mediaItems.length > 1 ? (
+            /* Multi-media carousel */
             <>
               <FlatList
-                data={images}
+                data={mediaItems}
                 horizontal
                 pagingEnabled
                 showsHorizontalScrollIndicator={false}
                 onMomentumScrollEnd={(e) => {
-                  const index = Math.round(e.nativeEvent.contentOffset.x / IMAGE_WIDTH);
+                  const index = Math.round(
+                    e.nativeEvent.contentOffset.x / IMAGE_WIDTH,
+                  );
                   setActiveImageIndex(index);
                 }}
                 keyExtractor={(_, index) => index.toString()}
-                renderItem={({ item: imageUrl }) => (
-                  <Image
-                    source={{ uri: getPostImageUrl(imageUrl) }}
-                    style={[styles.postImage, { width: IMAGE_WIDTH }]}
-                    contentFit="cover"
-                    transition={200}
-                    cachePolicy="memory-disk"
-                  />
+                renderItem={({ item: media }) => (
+                  <View style={{ width: IMAGE_WIDTH, height: 400 }}>
+                    {media.type === "video" ? (
+                      <VideoPlayer
+                        uri={getPostImageUrl(media.url)}
+                        thumbnail={media.thumbnail}
+                        autoPlay={false}
+                        trimStart={media.trimStart}
+                        trimEnd={media.trimEnd}
+                        style={styles.postMedia}
+                      />
+                    ) : (
+                      <Image
+                        source={{ uri: getPostImageUrl(media.url || media) }}
+                        style={[styles.postImage, { width: IMAGE_WIDTH }]}
+                        contentFit="cover"
+                        transition={200}
+                        cachePolicy="memory-disk"
+                      />
+                    )}
+                  </View>
                 )}
               />
               {/* Pagination dots */}
               <View style={styles.paginationContainer}>
-                {images.map((_: any, index: number) => (
+                {mediaItems.map((_: any, index: number) => (
                   <View
                     key={index}
                     style={[
                       styles.paginationDot,
-                      index === activeImageIndex && styles.paginationDotActive
+                      index === activeImageIndex && styles.paginationDotActive,
                     ]}
                   />
                 ))}
               </View>
-              {/* Image counter badge */}
+              {/* Media counter badge */}
               <View style={styles.imageCountBadge}>
-                <Text style={styles.imageCountText}>{activeImageIndex + 1}/{images.length}</Text>
+                <Text style={styles.imageCountText}>
+                  {activeImageIndex + 1}/{mediaItems.length}
+                </Text>
               </View>
             </>
-          ) : images.length === 1 ? (
-            /* Single image */
-            <Image
-              source={{ uri: getPostImageUrl(images[0]) }}
-              style={styles.postImage}
-              contentFit="cover"
-              transition={200}
-              cachePolicy="memory-disk"
-            />
+          ) : mediaItems.length === 1 ? (
+            /* Single item */
+            <View style={{ width: "100%", height: 400 }}>
+              {mediaItems[0].type === "video" ? (
+                <VideoPlayer
+                  uri={getPostImageUrl(mediaItems[0].url)}
+                  thumbnail={mediaItems[0].thumbnail}
+                  autoPlay={false}
+                  trimStart={mediaItems[0].trimStart}
+                  trimEnd={mediaItems[0].trimEnd}
+                  style={styles.postMedia}
+                />
+              ) : (
+                <Image
+                  source={{
+                    uri: getPostImageUrl(mediaItems[0].url || mediaItems[0]),
+                  }}
+                  style={styles.postImage}
+                  contentFit="cover"
+                  transition={200}
+                  cachePolicy="memory-disk"
+                />
+              )}
+            </View>
           ) : (
-            /* No images - show placeholder */
-            <View style={[styles.postImage, { backgroundColor: '#E5E7EB', alignItems: 'center', justifyContent: 'center' }]}>
-              <Text style={{ color: '#9CA3AF' }}>No image available</Text>
+            /* No media - show placeholder */
+            <View
+              style={[
+                styles.postImage,
+                {
+                  backgroundColor: "#E5E7EB",
+                  alignItems: "center",
+                  justifyContent: "center",
+                },
+              ]}
+            >
+              <Text style={{ color: "#9CA3AF" }}>No media available</Text>
             </View>
           )}
 
@@ -213,30 +296,55 @@ function PostItemComponent({ item, onComment, onOptions, currentUserId }: any) {
             <Heart size={90} color="#FF3040" fill="#FF3040" />
           </Animated.View>
         </View>
-      </TapGestureHandler>
+      </GestureDetector>
 
       {/* Actions Row */}
       <View style={styles.actionsRow}>
         <View style={styles.leftActions}>
           <TouchableOpacity onPress={handleLike} style={styles.actionBtn}>
-            <Heart size={24} color={isLiked ? '#FF3040' : '#111827'} fill={isLiked ? '#FF3040' : 'transparent'} />
+            <Heart
+              size={24}
+              color={isLiked ? "#FF3040" : "#111827"}
+              fill={isLiked ? "#FF3040" : "transparent"}
+            />
             <Text style={styles.actionCount}>{likesCount || 0}</Text>
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => onComment(item._id)} style={styles.actionBtn}>
+          <TouchableOpacity
+            onPress={() => onComment(item._id)}
+            style={styles.actionBtn}
+          >
             <MessageCircle size={24} color="#111827" />
             <Text style={styles.actionCount}>{item.comments?.length || 0}</Text>
           </TouchableOpacity>
         </View>
         <TouchableOpacity onPress={handleBookmark}>
-          <Bookmark size={24} color={isBookmarked ? '#8B5CF6' : '#111827'} fill={isBookmarked ? '#8B5CF6' : 'transparent'} />
+          <Bookmark
+            size={24}
+            color={isBookmarked ? "#8B5CF6" : "#111827"}
+            fill={isBookmarked ? "#8B5CF6" : "transparent"}
+          />
         </TouchableOpacity>
       </View>
+
+      {/* Analytics Insight Link (Owner Only) */}
+      {item.user?._id?.toString() === currentUserId?.toString() && (
+        <TouchableOpacity
+          onPress={() => router.push(`/post/analytics/${item._id}`)}
+          style={styles.insightsBtn}
+          activeOpacity={0.7}
+        >
+          <BarChart2 size={16} color="#4F46E5" />
+          <Text style={styles.insightsText}>View Insights</Text>
+        </TouchableOpacity>
+      )}
 
       {/* Caption Section */}
       {item.caption ? (
         <View style={styles.captionSection}>
           <Text style={styles.captionText}>
-            <Text style={styles.captionUserName}>{item.user?.username || 'user'} </Text>
+            <Text style={styles.captionUserName}>
+              {item.user?.username || "user"}{" "}
+            </Text>
             {item.caption}
           </Text>
         </View>
@@ -248,165 +356,182 @@ function PostItemComponent({ item, onComment, onOptions, currentUserId }: any) {
 const styles = StyleSheet.create({
   postCard: {
     marginBottom: 32,
-    width: '100%',
+    width: "100%",
     maxWidth: 500,
-    alignSelf: 'center',
-    backgroundColor: 'white',
+    alignSelf: "center",
+    backgroundColor: "white",
     borderRadius: 24,
     padding: 12,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.05,
     shadowRadius: 10,
-    elevation: 3
+    elevation: 3,
   },
   postHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     marginBottom: 12,
-    paddingHorizontal: 4
+    paddingHorizontal: 4,
   },
   userInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 12,
-    flex: 1
+    flex: 1,
   },
   userAvatar: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#F3F4F6',
+    backgroundColor: "#F3F4F6",
     borderWidth: 1,
-    borderColor: '#F3F4F6'
+    borderColor: "#F3F4F6",
   },
   userDetails: {
-    flex: 1
+    flex: 1,
   },
   userName: {
     fontSize: 15,
-    fontWeight: '700',
-    color: '#111827'
+    fontWeight: "700",
+    color: "#111827",
   },
   locationContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 4,
-    marginTop: 1
+    marginTop: 1,
   },
   locationText: {
     fontSize: 11,
-    color: '#6B7280',
-    fontWeight: '500'
+    color: "#6B7280",
+    fontWeight: "500",
   },
   verifiedBadge: {
-    backgroundColor: '#3B82F6',
+    backgroundColor: "#3B82F6",
     width: 14,
     height: 14,
     borderRadius: 7,
-    alignItems: 'center',
-    justifyContent: 'center'
+    alignItems: "center",
+    justifyContent: "center",
   },
   verifiedCheck: {
-    color: 'white',
+    color: "white",
     fontSize: 9,
-    fontWeight: 'bold'
+    fontWeight: "bold",
   },
   moreBtn: {
-    padding: 4
+    padding: 4,
   },
   imageContainer: {
-    width: '100%',
+    width: "100%",
     height: 400,
     borderRadius: 20,
-    overflow: 'hidden',
-    backgroundColor: '#F9FAFB'
+    overflow: "hidden",
+    backgroundColor: "#F9FAFB",
   },
   postImage: {
-    width: '100%',
-    height: '100%'
+    width: "100%",
+    height: "100%",
+  },
+  postMedia: {
+    width: "100%",
+    height: "100%",
+    borderRadius: 20,
   },
   heartOverlay: {
-    position: 'absolute',
-    top: '50%',
-    left: '50%',
+    position: "absolute",
+    top: "50%",
+    left: "50%",
     marginLeft: -45,
     marginTop: -45,
-    zIndex: 40
+    zIndex: 40,
   },
   actionsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     paddingTop: 14,
-    paddingHorizontal: 4
+    paddingHorizontal: 4,
   },
   leftActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 18
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 18,
   },
   actionBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
   },
   actionCount: {
     fontSize: 14,
-    fontWeight: '600',
-    color: '#111827'
+    fontWeight: "600",
+    color: "#111827",
   },
   captionSection: {
     marginTop: 12,
     paddingHorizontal: 4,
-    paddingBottom: 4
+    paddingBottom: 4,
   },
   captionText: {
     fontSize: 14,
-    color: '#374151',
-    lineHeight: 20
+    color: "#374151",
+    lineHeight: 20,
   },
   captionUserName: {
-    fontWeight: '700',
-    color: '#111827'
+    fontWeight: "700",
+    color: "#111827",
   },
   // Carousel pagination
   paginationContainer: {
-    position: 'absolute',
+    position: "absolute",
     bottom: 12,
     left: 0,
     right: 0,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
     gap: 6,
   },
   paginationDot: {
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: 'rgba(255,255,255,0.5)',
+    backgroundColor: "rgba(255,255,255,0.5)",
   },
   paginationDotActive: {
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
     width: 8,
     height: 8,
     borderRadius: 4,
   },
   imageCountBadge: {
-    position: 'absolute',
+    position: "absolute",
     top: 12,
     right: 12,
-    backgroundColor: 'rgba(0,0,0,0.6)',
+    backgroundColor: "rgba(0,0,0,0.6)",
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 12,
   },
   imageCountText: {
-    color: 'white',
+    color: "white",
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: "600",
+  },
+  insightsBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 12,
+    paddingHorizontal: 4,
+  },
+  insightsText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#4F46E5",
   },
 });
 

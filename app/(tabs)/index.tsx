@@ -3,7 +3,7 @@ import { Image } from 'expo-image';
 import { LayoutGrid, Repeat, Heart, MessageCircle, Bookmark, MoreHorizontal, Plus, Send } from 'lucide-react-native';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import Animated, { FadeInDown, FadeIn, useAnimatedStyle, useSharedValue, withSpring, withSequence, withDelay, withTiming, runOnJS, interpolate, Extrapolation, Easing } from 'react-native-reanimated';
-import { TapGestureHandler, State } from 'react-native-gesture-handler';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useRouter, useFocusEffect, Stack } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { authAPI } from '../../services/api';
@@ -226,7 +226,7 @@ export default function FeedScreen() {
   const takePhotoStory = async () => {
     try {
       const result = await ImagePicker.launchCameraAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: ['images'],
         allowsEditing: true,
         aspect: [9, 16],
         quality: 0.8,
@@ -253,7 +253,7 @@ export default function FeedScreen() {
         if (uri) imageData = await processWebImage(uri);
       } else {
         const result = await ImagePicker.launchImageLibraryAsync({
-          mediaTypes: ImagePicker.MediaTypeOptions.Images,
+          mediaTypes: ['images'],
           allowsEditing: true,
           aspect: [9, 16],
           quality: 0.8,

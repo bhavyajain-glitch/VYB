@@ -1,8 +1,10 @@
-import { View, Text, Image, TouchableOpacity, ScrollView, TextInput, StyleSheet, ActivityIndicator, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, Image, TouchableOpacity, ScrollView, TextInput, StyleSheet, ActivityIndicator, KeyboardAvoidingView, Platform, Alert } from 'react-native';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Send, Heart, MessageCircle } from 'lucide-react-native';
+import { ArrowLeft, Send, Heart, MessageCircle, Download, Share2, Play } from 'lucide-react-native';
 import { authAPI } from '../../services/api';
+import VideoPlayer from '../../components/VideoPlayer';
+import { downloadMedia, shareMedia, getFilenameFromUrl } from '../../utils/downloadMedia';
 
 const LIME = '#D4FF00';
 
@@ -14,6 +16,8 @@ export default function PostDetailScreen() {
   const [newComment, setNewComment] = useState('');
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  const [activeMediaIndex, setActiveMediaIndex] = useState(0);
 
   useEffect(() => {
     if (id) fetchPost();
@@ -21,15 +25,6 @@ export default function PostDetailScreen() {
 
   const fetchPost = async () => {
     try {
-      // We can fetch singular post if endpoint exists, or rely on passed params?
-      // Since I didn't verify getPostById endpoint, I'll assume I need to create it or I can just filter from feed if I passed data.
-      // But best is to fetch fresh. I added getPost to api.ts but need to add backend logic for it!
-      // Wait, I missed adding getPostById in backend controller. 
-      // I'll resort to just using the comments array from the Post object if I can fetch it.
-      // Actually, let's assume I can't fetch single post comfortably yet without adding it. 
-      // I'll add `getPostById` to backend in next step for robustness. 
-      // For now, I'll simulate it by fetching all (inefficient) or better, I'll implementing `getPostById`.
-
       const res = await authAPI.getPost(id as string);
       setPost(res.data);
       setComments(res.data.comments || []);
@@ -45,13 +40,53 @@ export default function PostDetailScreen() {
     setSending(true);
     try {
       const res = await authAPI.addComment(id as string, newComment);
-      // Backend returns the new comment object populated
       setComments(prev => [...prev, res.data]);
       setNewComment('');
     } catch (error) {
       console.error(error);
     } finally {
       setSending(false);
+    }
+  };
+
+  const handleDownload = async () => {
+    if (!post) return;
+    setDownloading(true);
+
+    try {
+      const allMedia = getPostMedia();
+      const currentMedia = allMedia[activeMediaIndex];
+
+      if (!currentMedia) {
+        Alert.alert('Error', 'No media to download');
+        return;
+      }
+
+      const filename = getFilenameFromUrl(currentMedia.url) || `vyb_${Date.now()}`;
+      const success = await downloadMedia(
+        currentMedia.url,
+        filename,
+        currentMedia.type
+      );
+
+      if (!success) {
+        console.log('Download may have failed or user cancelled');
+      }
+    } catch (error) {
+      console.error('Download error:', error);
+      Alert.alert('Download Failed', 'Unable to download the file.');
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  const handleShare = async () => {
+    if (!post) return;
+    const allMedia = getPostMedia();
+    const currentMedia = allMedia[activeMediaIndex];
+
+    if (currentMedia) {
+      await shareMedia(currentMedia.url, 'Check out this post on Vyb!');
     }
   };
 
@@ -63,8 +98,38 @@ export default function PostDetailScreen() {
     }
   };
 
+  // Get all media from post (images + videos)
+  const getPostMedia = (): Array<{ type: 'image' | 'video'; url: string; thumbnail?: string }> => {
+    if (!post) return [];
+
+    const media: Array<{ type: 'image' | 'video'; url: string; thumbnail?: string }> = [];
+
+    // Add images
+    const images = post.images || (post.image ? [post.image] : []);
+    images.forEach((url: string) => {
+      media.push({ type: 'image', url });
+    });
+
+    // Add videos
+    if (post.videos && post.videos.length > 0) {
+      post.videos.forEach((video: any) => {
+        media.push({
+          type: 'video',
+          url: video.url,
+          thumbnail: video.thumbnail
+        });
+      });
+    }
+
+    return media;
+  };
+
   if (loading) return <View style={styles.centered}><ActivityIndicator color={LIME} size="large" /></View>;
   if (!post) return <View style={styles.centered}><Text>Post not found</Text></View>;
+
+  const allMedia = getPostMedia();
+  const currentMedia = allMedia[activeMediaIndex] || allMedia[0];
+  const isVideoPost = currentMedia?.type === 'video';
 
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.container}>
@@ -83,7 +148,45 @@ export default function PostDetailScreen() {
             <Image source={{ uri: post.user?.profileImage || 'https://i.pravatar.cc/150' }} style={styles.avatar} />
             <Text style={styles.username}>{post.user?.username}</Text>
           </View>
-          <Image source={{ uri: post.image }} style={styles.postImage} resizeMode="cover" />
+
+          {/* Media Display */}
+          {currentMedia && (
+            <View style={styles.mediaContainer}>
+              {isVideoPost ? (
+                <VideoPlayer
+                  uri={currentMedia.url}
+                  thumbnail={currentMedia.thumbnail}
+                  showControls={true}
+                  autoPlay={false}
+                  style={styles.video}
+                />
+              ) : (
+                <Image
+                  source={{ uri: currentMedia.url }}
+                  style={styles.postImage}
+                  resizeMode="cover"
+                />
+              )}
+
+              {/* Media indicators */}
+              {allMedia.length > 1 && (
+                <View style={styles.mediaIndicators}>
+                  {allMedia.map((_, index) => (
+                    <TouchableOpacity
+                      key={index}
+                      onPress={() => setActiveMediaIndex(index)}
+                      style={[
+                        styles.mediaIndicator,
+                        index === activeMediaIndex && styles.mediaIndicatorActive
+                      ]}
+                    />
+                  ))}
+                </View>
+              )}
+            </View>
+          )}
+
+          {/* Actions */}
           <View style={styles.actions}>
             <TouchableOpacity onPress={async () => {
               try {
@@ -98,7 +201,18 @@ export default function PostDetailScreen() {
             <TouchableOpacity>
               <MessageCircle size={24} color="black" />
             </TouchableOpacity>
+            <TouchableOpacity onPress={handleShare}>
+              <Share2 size={24} color="black" />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={handleDownload} disabled={downloading} style={styles.downloadButton}>
+              {downloading ? (
+                <ActivityIndicator size="small" color="black" />
+              ) : (
+                <Download size={24} color="black" />
+              )}
+            </TouchableOpacity>
           </View>
+
           <Text style={styles.likes}>{post.likes?.length || 0} likes</Text>
           <Text style={styles.caption}><Text style={styles.bold}>{post.user?.username}</Text> {post.caption}</Text>
           <Text style={styles.date}>{new Date(post.createdAt).toLocaleDateString()}</Text>
@@ -146,8 +260,32 @@ const styles = StyleSheet.create({
   userRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12, gap: 10 },
   avatar: { width: 32, height: 32, borderRadius: 16 },
   username: { fontWeight: 'bold' },
-  postImage: { width: '100%', height: 300, borderRadius: 12, marginBottom: 12 },
+
+  mediaContainer: { position: 'relative', marginBottom: 12 },
+  postImage: { width: '100%', height: 300, borderRadius: 12 },
+  video: { width: '100%', height: 300, borderRadius: 12 },
+
+  mediaIndicators: {
+    position: 'absolute',
+    bottom: 12,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  mediaIndicator: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: 'rgba(255,255,255,0.5)',
+  },
+  mediaIndicatorActive: {
+    backgroundColor: '#D4FF00',
+  },
+
   actions: { flexDirection: 'row', gap: 16, marginBottom: 12 },
+  downloadButton: { marginLeft: 'auto' },
   likes: { fontWeight: 'bold', marginBottom: 6 },
   caption: { lineHeight: 20 },
   bold: { fontWeight: 'bold' },
