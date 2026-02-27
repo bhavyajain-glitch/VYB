@@ -7,5 +7,6 @@
 
   Run `npm i` to install the dependencies.
 
-  Run `npm run dev` to start the development server.
-  
+  Run `npm start` to start the development server.
+
+  Run `cd backend` then `npm i` then `npm run dev` to start backend server.
